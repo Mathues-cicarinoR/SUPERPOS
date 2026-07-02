@@ -49,4 +49,5 @@ logs/
 
 # App specific
 .gemini/
+.node/
 download_node.ps1
