@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+  <NFe>
+    <infNFe Id="NFe35260612345678000190550010009876541009876543">
+      <ide>
+        <nNF>987654</nNF>
+      </ide>
+      <emit>
+        <CNPJ>12345678000190</CNPJ>
+        <xNome>Distribuidora de Alimentos Alfa</xNome>
+      </emit>
+      <det nItem="1">
+        <prod>
+          <cProd>0001</cProd>
+          <cEAN>7891000100101</cEAN>
+          <xProd>Arroz Agulhinha Tipo 1 5kg</xProd>
+          <qCom>10.0000</qCom>
+          <vUnCom>19.5000</vUnCom>
+        </prod>
+      </det>
+      <det nItem="2">
+        <prod>
+          <cProd>0002</cProd>
+          <cEAN>7891000500501</cEAN>
+          <xProd>Sabonete Barra 90g (Aromas)</xProd>
+          <qCom>25.0000</qCom>
+          <vUnCom>1.2500</vUnCom>
+        </prod>
+      </det>
+      <cobr>
+        <fat>
+          <vOrig>226.25</vOrig>
+          <vLiq>226.25</vLiq>
+        </fat>
+        <dup>
+          <nDup>001</nDup>
+          <dVenc>2026-07-20</dVenc>
+          <vDup>226.25</vDup>
+        </dup>
+      </cobr>
+      <total>
+        <ICMSTot>
+          <vNF>226.25</vNF>
+        </ICMSTot>
+      </total>
+    </infNFe>
+  </NFe>
+</nfeProc>
