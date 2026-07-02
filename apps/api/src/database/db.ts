@@ -1,15 +1,9 @@
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pg from 'pg';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const DB_FILE = process.env.DB_PATH
-  ? path.resolve(process.env.DB_PATH)
-  : path.resolve(__dirname, '../../../database.db');
 
 export interface Database {
   run(sql: string, params?: any[]): Promise<{ lastID?: number; changes?: number }>;
@@ -131,28 +125,37 @@ let dbInstance: Database | null = null;
 export async function getDb(): Promise<Database> {
   if (dbInstance) return dbInstance;
 
+  let client: pg.Client;
+
   if (process.env.DATABASE_URL) {
-    console.log("Connecting to PostgreSQL database...");
-    const client = new pg.Client({
+    console.log("Connecting to PostgreSQL database using DATABASE_URL...");
+    client = new pg.Client({
       connectionString: process.env.DATABASE_URL,
       ssl: process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1')
         ? false
         : { rejectUnauthorized: false }
     });
-    await client.connect();
-    dbInstance = new PostgresDbWrapper(client);
-    return dbInstance;
+  } else if (process.env.PGHOST && process.env.PGUSER && process.env.PGPASSWORD && process.env.PGDATABASE) {
+    console.log("Connecting to PostgreSQL database using individual credentials...");
+    const host = process.env.PGHOST;
+    client = new pg.Client({
+      host: host,
+      user: process.env.PGUSER,
+      password: process.env.PGPASSWORD,
+      database: process.env.PGDATABASE,
+      port: process.env.PGPORT ? parseInt(process.env.PGPORT) : 5432,
+      ssl: host.includes('localhost') || host.includes('127.0.0.1')
+        ? false
+        : { rejectUnauthorized: false }
+    });
+  } else {
+    throw new Error(
+      "Configuração de banco de dados ausente. Defina a variável de ambiente DATABASE_URL ou as credenciais individuais (PGHOST, PGUSER, PGPASSWORD, PGDATABASE)."
+    );
   }
 
-  console.log("Connecting to SQLite database at:", DB_FILE);
-  const sqliteDb = await open({
-    filename: DB_FILE,
-    driver: sqlite3.Database
-  });
-  
-  dbInstance = sqliteDb as any as Database;
-
-  await dbInstance.run("PRAGMA foreign_keys = ON");
+  await client.connect();
+  dbInstance = new PostgresDbWrapper(client);
   return dbInstance;
 }
 
