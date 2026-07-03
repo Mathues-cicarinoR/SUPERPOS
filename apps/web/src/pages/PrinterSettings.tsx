@@ -9,7 +9,7 @@ import { Printer } from 'lucide-react';
 export default function PrinterSettings() {
   // Carrega as configurações guardadas no localStorage ou assume valores padrão
   const [printerCopies, setPrinterCopies] = useState<number>(() => {
-    return parseInt(localStorage.getItem('superpos_printer_copies') || '1');
+    return Number.parseInt(localStorage.getItem('superpos_printer_copies') || '1', 10);
   });
   const [printerWidth, setPrinterWidth] = useState<string>(() => {
     return localStorage.getItem('superpos_printer_width') || '80mm';
@@ -23,7 +23,7 @@ export default function PrinterSettings() {
   });
 
   // Salva as configurações editadas no localStorage para o PDV utilizar localmente
-  const handleSavePrinterSettings = (e: React.FormEvent) => {
+  const handleSavePrinterSettings = (e: React.SyntheticEvent) => {
     e.preventDefault();
     localStorage.setItem('superpos_printer_copies', printerCopies.toString());
     localStorage.setItem('superpos_printer_width', printerWidth);
@@ -43,20 +43,22 @@ export default function PrinterSettings() {
         <form onSubmit={handleSavePrinterSettings} className="modal-form" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div className="form-row">
             <div className="form-group col-3">
-              <label className="font-bold text-xs text-muted mb-1" style={{ display: 'block', fontSize: '11px', opacity: 0.8 }}>Número de Cópias *</label>
+              <label htmlFor="printer-copies" className="font-bold text-xs text-muted mb-1" style={{ display: 'block', fontSize: '11px', opacity: 0.8 }}>Número de Cópias *</label>
               <input
+                id="printer-copies"
                 type="number"
                 min="1"
                 max="10"
                 required
                 value={printerCopies}
-                onChange={(e) => setPrinterCopies(parseInt(e.target.value) || 1)}
+                onChange={(e) => setPrinterCopies(Number.parseInt(e.target.value, 10) || 1)}
                 className="input-field"
               />
             </div>
             <div className="form-group col-3">
-              <label className="font-bold text-xs text-muted mb-1" style={{ display: 'block', fontSize: '11px', opacity: 0.8 }}>Largura da Bobina *</label>
+              <label htmlFor="printer-width" className="font-bold text-xs text-muted mb-1" style={{ display: 'block', fontSize: '11px', opacity: 0.8 }}>Largura da Bobina *</label>
               <select
+                id="printer-width"
                 value={printerWidth}
                 onChange={(e) => setPrinterWidth(e.target.value)}
                 className="input-field select-field"
@@ -66,8 +68,9 @@ export default function PrinterSettings() {
               </select>
             </div>
             <div className="form-group col-3">
-              <label className="font-bold text-xs text-muted mb-1" style={{ display: 'block', fontSize: '11px', opacity: 0.8 }}>Título Cupom Não-Fiscal</label>
+              <label htmlFor="receipt-title" className="font-bold text-xs text-muted mb-1" style={{ display: 'block', fontSize: '11px', opacity: 0.8 }}>Título Cupom Não-Fiscal</label>
               <input
+                id="receipt-title"
                 type="text"
                 placeholder="Ex: RECIBO DE VENDA"
                 value={receiptTitle}

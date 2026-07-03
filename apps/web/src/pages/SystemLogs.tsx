@@ -24,7 +24,7 @@ export default function SystemLogs() {
 
   return (
     <div className="glass-card p-0 overflow-hidden">
-      <div className="p-3 border-b border-gray-800 bg-gray-900/20 flex-between" style={{ padding: '10px' }}>
+      <div className="p-3 border-b border-gray-800 bg-gray-900/20 flex-between" style={{ padding: '20px' }}>
         <div>
           <h3 className="card-title text-base font-bold">Logs Globais do Sistema</h3>
           <p className="text-xs text-muted">Registro auditável de todas as ações de operadores e administradores no terminal ou retaguarda.</p>

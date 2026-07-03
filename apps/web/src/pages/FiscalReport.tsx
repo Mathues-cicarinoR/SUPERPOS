@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../services/api';
 import { toast } from '../services/toast';
 import { FileText, DownloadCloud, X } from 'lucide-react';
@@ -380,9 +381,9 @@ export default function FiscalReport() {
       </div>
 
       {/* Modal para visualizar conteúdo do XML transmitido */}
-      {previewingInvoice && (
-        <div className="modal-backdrop" style={{ zIndex: 999 }}>
-          <div className="glass-card modal-content animate-slide-up" style={{ maxWidth: '700px', width: '90%' }}>
+      {previewingInvoice && createPortal(
+        <div className="modal-backdrop" style={{ zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="glass-card modal-content animate-slide-up" style={{ maxWidth: '700px', width: '90%', padding: '24px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', top: 'auto', left: 'auto', transform: 'none' }}>
             <div className="modal-header">
               <h3>
                 {previewingInvoice.status === 'success'
@@ -477,7 +478,8 @@ export default function FiscalReport() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

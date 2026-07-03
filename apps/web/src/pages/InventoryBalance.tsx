@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api, type Inventory as Inventario } from '../services/api';
 import { toast } from '../services/toast';
 import { confirmService } from '../services/confirm';
@@ -538,9 +539,9 @@ export default function InventoryBalance() {
       )}
 
       {/* Modal para criar novo balanço */}
-      {modalNovoInventarioAberto && (
-        <div className="modal-backdrop">
-          <div className="glass-card modal-content animate-slide-up" style={{ maxWidth: '450px' }}>
+      {modalNovoInventarioAberto && createPortal(
+        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="glass-card modal-content animate-slide-up" style={{ maxWidth: '450px', width: '95%', padding: '24px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', top: 'auto', left: 'auto', transform: 'none' }}>
             <div className="modal-header">
               <h3>Novo Balanço / Inventário</h3>
               <button className="btn-icon" onClick={() => setModalNovoInventarioAberto(false)}>
@@ -595,7 +596,8 @@ export default function InventoryBalance() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -24,7 +24,7 @@ export default function StockAdjustments() {
 
   return (
     <div className="glass-card p-0 overflow-hidden">
-      <div className="p-3 border-b border-gray-800 bg-gray-900/20" style={{ padding: '10px' }}>
+      <div className="p-3 border-b border-gray-800 bg-gray-900/20" style={{ padding: '20px' }}>
         <h3 className="card-title text-base font-bold">Rastreamento de Ajustes Manuais</h3>
         <p className="text-xs text-muted">Ações de contagem manual, correções de avaria ou perdas operadas pela gerência.</p>
       </div>
@@ -33,7 +33,7 @@ export default function StockAdjustments() {
         <table className="table" style={{ minWidth: '1100px' }}>
           <thead>
             <tr>
-              <th>Data/Hora</th>
+              <th>Data/Hora</th>  
               <th>Produto</th>
               <th>Cód. Barras</th>
               <th className="text-center">Estoque Antigo</th>
@@ -52,17 +52,23 @@ export default function StockAdjustments() {
               adjustments.map(a => {
                 const diff = a.new_stock - a.previous_stock;
                 const diffText = diff > 0 ? `+${diff}` : `${diff}`;
-                const diffClass = diff > 0 ? 'text-success font-bold' : diff < 0 ? 'text-danger font-bold' : 'text-muted';
+                
+                let diffClass = 'text-muted';
+                if (diff > 0) {
+                  diffClass = 'text-success font-bold';
+                } else if (diff < 0) {
+                  diffClass = 'text-danger font-bold';
+                }
                 return (
                   <tr key={a.id} className="table-row">
                     <td>{new Date(a.created_at).toLocaleString('pt-BR')}</td>
-                    <td className="font-semibold">{a.product_name}</td>
-                    <td className="text-monospace text-xs">{a.barcode}</td>
-                    <td className="text-center text-muted">{a.previous_stock}</td>
-                    <td className="text-center font-semibold">{a.new_stock}</td>
-                    <td className={`text-center ${diffClass}`}>{diffText}</td>
-                    <td>{a.reason}</td>
-                    <td className="font-bold text-xs text-blue-400">{a.operator_name}</td>
+                    <td className="font-semibold" style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace' }}>{a.product_name}</td>
+                    <td className="text-monospace text-xs" style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace' }}>{a.barcode}</td>
+                    <td className="text-center text-muted" style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace' }}>{a.previous_stock}</td>
+                    <td className="text-center font-semibold" style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace' }}>{a.new_stock}</td>
+                    <td className={`text-center ${diffClass}`} style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace' }}>{diffText}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace' }}>{a.reason}</td>
+                    <td className="font-bold text-xs text-blue-400" style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace' }}>{a.operator_name}</td>
                   </tr>
                 );
               })

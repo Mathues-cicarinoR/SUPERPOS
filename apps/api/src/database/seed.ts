@@ -2,16 +2,12 @@ import { getDb } from './db.js';
 
 function obterAcessoModulo(roleName: string, moduleName: string): number {
   if (roleName === 'admin') return 1;
-  if (roleName === 'manager') return moduleName !== 'users' ? 1 : 0;
+  if (roleName === 'manager') return moduleName === 'users' ? 0 : 1;
   if (roleName === 'cashier') return moduleName === 'pos' ? 1 : 0;
   return 0;
 }
 
-async function runSeed() {
-  console.log("Starting database reset and seeding...");
-  const db = await getDb();
-
-  // 1. Wipe all existing data
+async function wipeDatabase(db: any) {
   const tables = [
     'categories', 'subcategories', 'terminals', 'roles', 'role_permissions',
     'users', 'suppliers', 'accounts_payable', 'products', 'customers',
@@ -21,10 +17,12 @@ async function runSeed() {
     'inventory_items'
   ];
 
+  const isPostgres = !!(process.env.DATABASE_URL || process.env.PGHOST);
+
   for (const table of tables) {
     try {
-      if (process.env.DATABASE_URL) {
-        await db.run(`TRUNCATE TABLE ${table} CASCADE`);
+      if (isPostgres) {
+        await db.run(`TRUNCATE TABLE ${table} RESTART IDENTITY CASCADE`);
       } else {
         await db.run(`DELETE FROM ${table}`);
       }
@@ -34,14 +32,17 @@ async function runSeed() {
   }
 
   try {
-    if (!process.env.DATABASE_URL) {
+    if (!isPostgres) {
       await db.run("DELETE FROM sqlite_sequence");
     }
-  } catch (e) {}
+  } catch (e: any) {
+    console.warn("Could not delete from sqlite_sequence:", e.message);
+  }
 
   console.log("Database cleared successfully.");
+}
 
-  // 2. Seed roles and permissions
+async function seedRolesAndPermissions(db: any) {
   console.log("Seeding roles and permissions...");
   const adminRoleResult = await db.run("INSERT INTO roles (name, description) VALUES ('admin', 'Super Administrador do Sistema')");
   const managerRoleResult = await db.run("INSERT INTO roles (name, description) VALUES ('manager', 'Gerente de Loja')");
@@ -70,14 +71,16 @@ async function runSeed() {
       cashierRoleResult.lastID, mod, hasAccess ? 1 : 0, hasAccess ? 1 : 0
     ]);
   }
+}
 
-  // 3. Seed users
+async function seedUsers(db: any) {
   console.log("Seeding users...");
   await db.run("INSERT INTO users (username, password, role) VALUES ('admin', 'admin', 'admin')");
   await db.run("INSERT INTO users (username, password, role) VALUES ('gerente', 'gerente', 'manager')");
   await db.run("INSERT INTO users (username, password, role) VALUES ('operador1', '1234', 'cashier')");
+}
 
-  // 4. Seed categories & subcategories
+async function seedCategoriesAndSubcategories(db: any) {
   console.log("Seeding categories and subcategories...");
   const defaultCats = ['Alimentos', 'Bebidas', 'Limpeza', 'Higiene'];
   for (const catName of defaultCats) {
@@ -93,25 +96,25 @@ async function runSeed() {
   await db.run("INSERT INTO subcategories (category_id, name) VALUES (3, 'Lavanderia')");
   await db.run("INSERT INTO subcategories (category_id, name) VALUES (4, 'Cuidados Pessoais')");
   await db.run("INSERT INTO subcategories (category_id, name) VALUES (4, 'Cabelos')");
+}
 
-  // 5. Seed terminals
+async function seedTerminalsSuppliersAndPayable(db: any) {
   console.log("Seeding terminals...");
   await db.run("INSERT INTO terminals (name) VALUES ('Caixa 01')");
   await db.run("INSERT INTO terminals (name) VALUES ('Caixa 02')");
 
-  // 6. Seed suppliers
   console.log("Seeding suppliers...");
   await db.run("INSERT INTO suppliers (name, cnpj, phone, email) VALUES ('Distribuidora de Alimentos Alfa', '12.345.678/0001-90', '(11) 98765-4321', 'comercial@alfa.com')");
   await db.run("INSERT INTO suppliers (name, cnpj, phone, email) VALUES ('Distribuidora de Bebidas Geladas', '98.765.432/0001-10', '(21) 99999-8888', 'contato@geladas.com')");
   await db.run("INSERT INTO suppliers (name, cnpj, phone, email) VALUES ('Higiene & Cia Ltda', '45.678.901/0001-23', '(31) 3456-7890', 'financeiro@higiene.com')");
 
-  // 7. Seed accounts payable
   console.log("Seeding accounts payable...");
   await db.run("INSERT INTO accounts_payable (supplier_id, description, amount, due_date, status) VALUES (1, 'Compra de Arroz e Feijão', 1250, '2026-07-10', 'pending')");
   await db.run("INSERT INTO accounts_payable (supplier_id, description, amount, due_date, status) VALUES (2, 'Carga de Cervejas e Refri', 800, '2026-06-25', 'pending')");
   await db.run("INSERT INTO accounts_payable (supplier_id, description, amount, due_date, status, paid_at) VALUES (3, 'Sabonetes e Cremes Dentais', 450, '2026-06-12', 'paid', '2026-06-12 14:00:00')");
+}
 
-  // 8. Seed products
+async function seedProductsAndCustomers(db: any) {
   console.log("Seeding products...");
   const defaultProducts = [
     ["7891000100101", "Arroz Agulhinha Tipo 1 5kg", "Alimentos", 1, 1, 18.5, 24.9, 50, 10, "un"],
@@ -140,7 +143,6 @@ async function runSeed() {
     );
   }
 
-  // 9. Seed customers
   console.log("Seeding customers...");
   const defaultCustomers = [
     ["Consumidor Final", null, null, null, 0, 0, 0],
@@ -156,123 +158,158 @@ async function runSeed() {
       c
     );
   }
+}
 
-  // 10. Seed employees
+async function seedEmployeesAndRecurring(db: any) {
   console.log("Seeding employees...");
   await db.run("INSERT INTO employees (name, cpf, rg, phone, email, role, salary, admission_date, status, documents_info) VALUES ('Carlos Oliveira', '234.567.890-12', '12.345.678-9', '(11) 98888-7777', 'carlos.oliveira@superpos.com', 'Açougueiro', 2500, '2025-01-15', 'active', 'PIS: 120.45678.90-1, CTPS: 45678 Série 002')");
   await db.run("INSERT INTO employees (name, cpf, rg, phone, email, role, salary, admission_date, status, documents_info) VALUES ('Ana Beatriz Santos', '345.678.901-23', '23.456.789-0', '(11) 97777-6666', 'ana.beatriz@superpos.com', 'Operadora de Caixa', 1800, '2025-03-10', 'active', 'PIS: 130.56789.01-2, CTPS: 56789 Série 003')");
   await db.run("INSERT INTO employees (name, cpf, rg, phone, email, role, salary, admission_date, status, documents_info) VALUES ('Roberto Souza', '456.789.012-34', '34.567.890-1', '(11) 96666-5555', 'roberto.souza@superpos.com', 'Repositor de Estoque', 1600, '2025-02-20', 'active', 'PIS: 140.67890.12-3, CTPS: 67890 Série 004')");
 
-  // 11. Seed recurring accounts
   console.log("Seeding recurring accounts...");
   await db.run("INSERT INTO recurring_accounts (description, amount, due_day, category, supplier_id, status) VALUES ('Aluguel do Galpão', 3500, 5, 'Aluguel', NULL, 'active')");
   await db.run("INSERT INTO recurring_accounts (description, amount, due_day, category, supplier_id, status) VALUES ('Assinatura Software SuperPOS', 250, 15, 'Sistemas', 1, 'active')");
   await db.run("INSERT INTO recurring_accounts (description, amount, due_day, category, supplier_id, status) VALUES ('Serviço de Limpeza Mensal', 1200, 20, 'Serviços', 3, 'active')");
+}
 
-  // 12. Seed sales & sessions history
-  console.log("Seeding sales movements...");
-  const products = await db.all("SELECT id, price_sell, name FROM products");
-  if (products.length > 0) {
-    for (let i = 29; i >= 0; i--) {
-      const numSales = Math.floor(Math.random() * 3) + 2;
-      for (let j = 0; j < numSales; j++) {
-        const hourOffset = Math.floor(Math.random() * 12) + 8;
-        const minuteOffset = Math.floor(Math.random() * 60);
-        const dateStr = `datetime('now', '-${i} days', '+${hourOffset} hours', '+${minuteOffset} minutes')`;
+async function generateSingleSale(db: any, products: any[], dayOffset: number) {
+  const hourOffset = Math.floor(Math.random() * 12) + 8;
+  const minuteOffset = Math.floor(Math.random() * 60);
+  const dateObj = new Date();
+  dateObj.setDate(dateObj.getDate() - dayOffset);
+  dateObj.setHours(hourOffset, minuteOffset, 0, 0);
+    const dateStr = dateObj.toISOString();
 
-        const paymentMethods = ['Dinheiro', 'Cartão de Crédito', 'Cartão de Débito', 'PIX'];
-        const pm = paymentMethods[Math.floor(Math.random() * paymentMethods.length)];
+  const paymentMethods = ['Dinheiro', 'Cartão de Crédito', 'Cartão de Débito', 'PIX'];
+  const pm = paymentMethods[Math.floor(Math.random() * paymentMethods.length)];
 
-        const saleItemsCount = Math.floor(Math.random() * 3) + 1;
-        const selectedItems: any[] = [];
-        let totalVal = 0;
+  const saleItemsCount = Math.floor(Math.random() * 3) + 1;
+  const selectedItems: any[] = [];
+  let totalVal = 0;
 
-        for (let k = 0; k < saleItemsCount; k++) {
-          const prod = products[Math.floor(Math.random() * products.length)];
-          
-          // Sabonete sem vendas para testar insight da IA
-          if (prod.name === 'Sabonete Barra 90g') continue;
-          // Queda de vendas do Refrigerante na última quinzena
-          if (prod.name === 'Refrigerante Cola 2L' && i < 15) continue;
+  for (let k = 0; k < saleItemsCount; k++) {
+    const prod = products[Math.floor(Math.random() * products.length)];
+    
+    // Sabonete sem vendas para testar insight da IA
+    if (prod.name === 'Sabonete Barra 90g') continue;
+    // Queda de vendas do Refrigerante na última quinzena
+    if (prod.name === 'Refrigerante Cola 2L' && dayOffset < 15) continue;
 
-          const qty = Math.floor(Math.random() * 3) + 1;
-          const price = prod.price_sell;
-          const subtotal = qty * price;
+    const qty = Math.floor(Math.random() * 3) + 1;
+    const price = prod.price_sell;
+    const subtotal = qty * price;
 
-          selectedItems.push({
-            product_id: prod.id,
-            qty,
-            price,
-            subtotal
-          });
-          totalVal += subtotal;
-        }
-
-        if (selectedItems.length === 0) continue;
-
-        const saleResult = await db.run(
-          `INSERT INTO sales (customer_id, total_amount, discount, final_amount, payment_method, created_at)
-           VALUES (1, ?, 0, ?, ?, ${dateStr})`,
-          [totalVal, totalVal, pm]
-        );
-
-        const saleId = saleResult.lastID;
-
-        for (const item of selectedItems) {
-          await db.run(
-            `INSERT INTO sale_items (sale_id, product_id, quantity, price_unit, price_total)
-             VALUES (?, ?, ?, ?, ?)`,
-            [saleId, item.product_id, item.qty, item.price, item.subtotal]
-          );
-        }
-      }
-    }
-    console.log("Sales movements seeded successfully.");
+    selectedItems.push({
+      product_id: prod.id,
+      qty,
+      price,
+      subtotal
+    });
+    totalVal += subtotal;
   }
 
-  // 13. Seed cash sessions
+  if (selectedItems.length === 0) return;
+
+  const saleResult = await db.run(
+    `INSERT INTO sales (customer_id, total_amount, discount, final_amount, payment_method, created_at)
+     VALUES (1, ?, 0, ?, ?, ?)`,
+    [totalVal, totalVal, pm, dateStr]
+  );
+
+  const saleId = saleResult.lastID;
+
+  for (const item of selectedItems) {
+    await db.run(
+      `INSERT INTO sale_items (sale_id, product_id, quantity, price_unit, price_total)
+       VALUES (?, ?, ?, ?, ?)`,
+      [saleId, item.product_id, item.qty, item.price, item.subtotal]
+    );
+  }
+}
+
+async function seedSalesMovement(db: any) {
+  console.log("Seeding sales movements...");
+  const products = await db.all("SELECT id, price_sell, name FROM products");
+  if (products.length === 0) return;
+
+  for (let i = 29; i >= 0; i--) {
+    const numSales = Math.floor(Math.random() * 3) + 2;
+    for (let j = 0; j < numSales; j++) {
+      await generateSingleSale(db, products, i);
+    }
+  }
+  console.log("Sales movements seeded successfully.");
+}
+
+async function seedSessionsLogsAndLayout(db: any) {
   console.log("Seeding cash sessions...");
+  const date2DaysAgo = new Date();
+  date2DaysAgo.setDate(date2DaysAgo.getDate() - 2);
+  const date2DaysAgoPlus8 = new Date(date2DaysAgo.getTime() + 8 * 60 * 60 * 1000);
+
+  const date1DayAgo = new Date();
+  date1DayAgo.setDate(date1DayAgo.getDate() - 1);
+  const date1DayAgoPlus8 = new Date(date1DayAgo.getTime() + 8 * 60 * 60 * 1000);
+
+  const date2HoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+
   await db.run(`
     INSERT INTO cash_sessions (pdv_name, operator_name, opened_at, closed_at, initial_float, final_cash_reported, status, closed_by)
-    VALUES ('Caixa 01', 'operador1', datetime('now', '-2 days'), datetime('now', '-2 days', '+8 hours'), 100, 350, 'closed', 'gerente')
-  `);
+    VALUES ('Caixa 01', 'operador1', ?, ?, 100, 350, 'closed', 'gerente')
+  `, [date2DaysAgo.toISOString(), date2DaysAgoPlus8.toISOString()]);
+
   await db.run(`
     INSERT INTO cash_sessions (pdv_name, operator_name, opened_at, closed_at, initial_float, final_cash_reported, status, closed_by)
-    VALUES ('Caixa 01', 'operador1', datetime('now', '-1 days'), datetime('now', '-1 days', '+8 hours'), 100, 420, 'closed', 'gerente')
-  `);
+    VALUES ('Caixa 01', 'operador1', ?, ?, 100, 420, 'closed', 'gerente')
+  `, [date1DayAgo.toISOString(), date1DayAgoPlus8.toISOString()]);
+
   await db.run(`
     INSERT INTO cash_sessions (pdv_name, operator_name, opened_at, initial_float, status)
-    VALUES ('Caixa 01', 'gerente', datetime('now', '-2 hours'), 100, 'open')
-  `);
+    VALUES ('Caixa 01', 'gerente', ?, 100, 'open')
+  `, [date2HoursAgo.toISOString()]);
 
-  // 14. Seed system logs
   console.log("Seeding system logs...");
   await db.run("INSERT INTO system_logs (action_type, operator_name, details) VALUES ('LOGIN', 'admin', 'Login efetuado no painel administrativo')");
   await db.run("INSERT INTO system_logs (action_type, operator_name, details) VALUES ('STOCK_UPDATE', 'gerente', 'Estoque do produto Arroz Agulhinha Tipo 1 5kg adjusted manual')");
 
-  // 15. Seed layout mapping
   console.log("Seeding layout mapping...");
   const z1 = await db.run("INSERT INTO layout_zones (name, zone_type, x, y, width, height, color) VALUES ('Gôndola Alimentos', 'shelf', 2, 2, 4, 2, '#4f46e5')");
   const z2 = await db.run("INSERT INTO layout_zones (name, zone_type, x, y, width, height, color) VALUES ('Gôndola Limpeza', 'shelf', 2, 6, 4, 2, '#06b6d4')");
   const z3 = await db.run("INSERT INTO layout_zones (name, zone_type, x, y, width, height, color) VALUES ('Gôndola Higiene', 'shelf', 8, 2, 4, 2, '#ec4899')");
-  const z4 = await db.run("INSERT INTO layout_zones (name, zone_type, x, y, width, height, color) VALUES ('Hortifrúti', 'hortifruti', 8, 6, 4, 3, '#10b981')");
+  await db.run("INSERT INTO layout_zones (name, zone_type, x, y, width, height, color) VALUES ('Hortifrúti', 'hortifruti', 8, 6, 4, 3, '#10b981')");
   const z5 = await db.run("INSERT INTO layout_zones (name, zone_type, x, y, width, height, color) VALUES ('Geladeira Bebidas', 'fridge', 13, 2, 2, 5, '#3b82f6')");
-  const z6 = await db.run("INSERT INTO layout_zones (name, zone_type, x, y, width, height, color) VALUES ('Padaria', 'bakery', 13, 8, 2, 3, '#f59e0b')");
-  const z7 = await db.run("INSERT INTO layout_zones (name, zone_type, x, y, width, height, color) VALUES ('Caixa 01', 'checkout', 2, 10, 3, 2, '#ef4444')");
-  const z8 = await db.run("INSERT INTO layout_zones (name, zone_type, x, y, width, height, color) VALUES ('Caixa 02', 'checkout', 7, 10, 3, 2, '#ef4444')");
+  await db.run("INSERT INTO layout_zones (name, zone_type, x, y, width, height, color) VALUES ('Padaria', 'bakery', 13, 8, 2, 3, '#f59e0b')");
+  await db.run("INSERT INTO layout_zones (name, zone_type, x, y, width, height, color) VALUES ('Caixa 01', 'checkout', 2, 10, 3, 2, '#ef4444')");
+  await db.run("INSERT INTO layout_zones (name, zone_type, x, y, width, height, color) VALUES ('Caixa 02', 'checkout', 7, 10, 3, 2, '#ef4444')");
 
-  // Map categories to layout zones
   await db.run("INSERT INTO layout_zone_items (zone_id, category_id) VALUES (?, 1)", [z1.lastID]); // Alimentos -> Gôndola Alimentos
   await db.run("INSERT INTO layout_zone_items (zone_id, category_id) VALUES (?, 3)", [z2.lastID]); // Limpeza -> Gôndola Limpeza
   await db.run("INSERT INTO layout_zone_items (zone_id, category_id) VALUES (?, 4)", [z3.lastID]); // Higiene -> Gôndola Higiene
   await db.run("INSERT INTO layout_zone_items (zone_id, category_id) VALUES (?, 2)", [z5.lastID]); // Bebidas -> Geladeira Bebidas
+}
+
+async function runSeed() {
+  console.log("Starting database reset and seeding...");
+  const db = await getDb();
+
+  await wipeDatabase(db);
+  await seedRolesAndPermissions(db);
+  await seedUsers(db);
+  await seedCategoriesAndSubcategories(db);
+  await seedTerminalsSuppliersAndPayable(db);
+  await seedProductsAndCustomers(db);
+  await seedEmployeesAndRecurring(db);
+  await seedSalesMovement(db);
+  await seedSessionsLogsAndLayout(db);
 
   await db.run("PRAGMA foreign_keys = ON");
   await db.close();
   console.log("Database reset and seeding completed successfully!");
 }
 
-runSeed().catch(err => {
+try {
+  await runSeed();
+} catch (err) {
   console.error("Failed to run seed script:", err);
   process.exit(1);
-});
+}

@@ -139,9 +139,14 @@ export default function Dashboard() {
 
           {/* X axis labels */}
           {points.map((p) => {
-            // Format YYYY-MM-DD to DD/MM
-            const parts = p.date.split('-');
-            const dateStr = parts.length === 3 ? `${parts[2]}/${parts[1]}` : p.date;
+            // Format YYYY-MM-DD or ISO timestamp to DD/MM
+            const dateObj = new Date(p.date);
+            let dateStr = p.date;
+            if (!Number.isNaN(dateObj.getTime())) {
+              const day = String(dateObj.getUTCDate()).padStart(2, '0');
+              const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+              dateStr = `${day}/${month}`;
+            }
             return (
               <text 
                 key={p.date} 

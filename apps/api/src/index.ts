@@ -1,10 +1,10 @@
 import express from 'express';
 import cors from 'cors';
-import { initDb, getDb, resetDbConnection } from './database/db.js';
+import { initDb, getDb, resetDbConnection, syncPgToSqlite, syncSqliteToPg } from './database/db.js';
 import { FiscalService } from './services/fiscal.js';
 import JSZip from 'jszip';
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -22,11 +22,17 @@ if (!fs.existsSync(BACKUP_DIR)) {
 }
 
 // Helper to create SQLite database backup
-export function createBackupFile(label: string = 'manual'): string {
+export async function createBackupFile(label: string = 'manual'): Promise<string> {
   const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `backup_${label}_${dateStr}.db`;
   const destPath = path.join(BACKUP_DIR, filename);
   const sourcePath = DB_FILE;
+
+  try {
+    await syncPgToSqlite();
+  } catch (err) {
+    console.error("Erro ao sincronizar Postgres para SQLite antes do backup:", err);
+  }
 
   if (fs.existsSync(sourcePath)) {
     fs.copyFileSync(sourcePath, destPath);
@@ -68,7 +74,7 @@ export async function logAction(action_type: string, operator_name: string, deta
 
 export async function applyPromotionsToProducts(db: any, products: any[]) {
   const nowStr = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  
+
   try {
     const activePromos = await db.all(`
       SELECT p.*, pp.product_id, pp.discount_type AS prod_discount_type, pp.discount_value AS prod_discount_value
@@ -101,7 +107,7 @@ export async function applyPromotionsToProducts(db: any, products: any[]) {
         } else if (effectiveType === 'fixed_discount') {
           promotional_price = Math.max(0, product.price_sell - effectiveValue);
         }
-        promotional_price = parseFloat(promotional_price.toFixed(2));
+        promotional_price = Number.parseFloat(promotional_price.toFixed(2));
 
         return {
           ...product,
@@ -181,7 +187,7 @@ app.get('/api/products/barcode/:barcode', async (req, res) => {
        FROM products p 
        LEFT JOIN product_barcodes pb ON p.id = pb.product_id 
        WHERE p.barcode = ? OR pb.barcode = ? OR p.code = ?
-       GROUP BY p.id`, 
+       GROUP BY p.id`,
       [barcode, barcode, barcode]
     );
     if (product) {
@@ -198,7 +204,7 @@ app.get('/api/products/barcode/:barcode', async (req, res) => {
 
 app.post('/api/products', async (req, res) => {
   const db = await getDb();
-  const { 
+  const {
     code, barcode, barcodes, name, category, category_id, subcategory_id, price_buy, price_sell, stock_qty, min_stock, unit, operator_name,
     ncm, cest, cfop, origin, csosn, cst_pis, cst_cofins, aliquot_icms, aliquot_pis, aliquot_cofins, is_fiscal
   } = req.body;
@@ -240,7 +246,7 @@ app.post('/api/products', async (req, res) => {
     );
 
     const productId = result.lastID;
-    
+
     // Save multiple barcodes
     const barcodeList = new Set<string>();
     if (barcode && barcode.trim()) {
@@ -270,7 +276,7 @@ app.post('/api/products', async (req, res) => {
 app.put('/api/products/:id', async (req, res) => {
   const db = await getDb();
   const { id } = req.params;
-  const { 
+  const {
     code, barcode, barcodes, name, category, category_id, subcategory_id, price_buy, price_sell, stock_qty, min_stock, unit, operator_name,
     ncm, cest, cfop, origin, csosn, cst_pis, cst_cofins, aliquot_icms, aliquot_pis, aliquot_cofins, is_fiscal
   } = req.body;
@@ -306,7 +312,7 @@ app.put('/api/products/:id', async (req, res) => {
 
     // Update barcodes table
     await db.run("DELETE FROM product_barcodes WHERE product_id = ?", [id]);
-    
+
     const barcodeList = new Set<string>();
     if (barcode && barcode.trim()) {
       barcodeList.add(barcode.trim());
@@ -397,7 +403,7 @@ app.post('/api/products/invoice-entry', async (req, res) => {
       if (installments && Array.isArray(installments) && installments.length > 0) {
         for (let i = 0; i < installments.length; i++) {
           const inst = installments[i];
-          const desc = `Entrada NF nº ${invoice_number || 'S/N'} (Parc ${i+1}/${installments.length}) - ${supplier_name || 'Fornecedor avulso'}`;
+          const desc = `Entrada NF nº ${invoice_number || 'S/N'} (Parc ${i + 1}/${installments.length}) - ${supplier_name || 'Fornecedor avulso'}`;
           await db.run(
             "INSERT INTO accounts_payable (supplier_id, description, amount, due_date, status) VALUES (?, ?, ?, ?, 'pending')",
             [supplierId, desc, parseFloat(inst.amount), inst.due_date]
@@ -424,7 +430,7 @@ app.post('/api/products/invoice-entry', async (req, res) => {
         `SELECT p.* FROM products p 
          LEFT JOIN product_barcodes pb ON p.id = pb.product_id 
          WHERE p.barcode = ? OR pb.barcode = ? OR p.code = ?
-         GROUP BY p.id`, 
+         GROUP BY p.id`,
         [barcode, barcode, barcode]
       );
 
@@ -432,7 +438,7 @@ app.post('/api/products/invoice-entry', async (req, res) => {
         // Atualizar estoque e preço de compra
         const newStock = product.stock_qty + parseFloat(quantity);
         const finalPriceSell = price_sell ? parseFloat(price_sell) : product.price_sell;
-        
+
         await db.run(
           "UPDATE products SET stock_qty = ?, price_buy = ?, price_sell = ? WHERE id = ?",
           [newStock, parseFloat(price_buy), finalPriceSell, product.id]
@@ -460,7 +466,7 @@ app.post('/api/products/invoice-entry', async (req, res) => {
 
         const finalPriceSell = price_sell ? parseFloat(price_sell) : parseFloat(price_buy) * 1.3; // Margem de 30%
         const finalCode = Date.now().toString().slice(-6) + Math.floor(100 + Math.random() * 900);
-        
+
         const result = await db.run(
           `INSERT INTO products (code, barcode, name, category, category_id, price_buy, price_sell, stock_qty, min_stock, unit,
                                  ncm, cest, cfop, origin, csosn, cst_pis, cst_cofins, aliquot_icms, aliquot_pis, aliquot_cofins)
@@ -592,7 +598,7 @@ app.delete('/api/customers/:id', async (req, res) => {
 
 // Helper function to process single sale within connection
 async function processSaleTransaction(db: any, saleData: any): Promise<number> {
-  const { customer_id, items, total_amount, discount, final_amount, payment_method, payment_details, amount_paid, change_given, fee_amount, offline_uuid } = saleData;
+  const { customer_id, items, total_amount, discount, final_amount, payment_method, payment_details, amount_paid, change_given, fee_amount, offline_uuid, created_at } = saleData;
 
   // If sale has UUID, check if it was already processed (to prevent double sync)
   if (offline_uuid) {
@@ -603,22 +609,43 @@ async function processSaleTransaction(db: any, saleData: any): Promise<number> {
   }
 
   // 1. Insert Sale record
-  const saleResult = await db.run(
-    `INSERT INTO sales (customer_id, total_amount, discount, final_amount, payment_method, payment_details, amount_paid, change_given, fee_amount, offline_uuid)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      customer_id || null, 
-      total_amount, 
-      discount || 0.0, 
-      final_amount, 
-      payment_method, 
-      payment_details ? (typeof payment_details === 'object' ? JSON.stringify(payment_details) : payment_details) : null,
-      amount_paid, 
-      change_given, 
-      fee_amount || 0.0,
-      offline_uuid || null
-    ]
-  );
+  let saleResult;
+  if (created_at) {
+    saleResult = await db.run(
+      `INSERT INTO sales (customer_id, total_amount, discount, final_amount, payment_method, payment_details, amount_paid, change_given, fee_amount, offline_uuid, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        customer_id || null,
+        total_amount,
+        discount || 0.0,
+        final_amount,
+        payment_method,
+        payment_details ? (typeof payment_details === 'object' ? JSON.stringify(payment_details) : payment_details) : null,
+        amount_paid,
+        change_given,
+        fee_amount || 0.0,
+        offline_uuid || null,
+        created_at
+      ]
+    );
+  } else {
+    saleResult = await db.run(
+      `INSERT INTO sales (customer_id, total_amount, discount, final_amount, payment_method, payment_details, amount_paid, change_given, fee_amount, offline_uuid)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        customer_id || null,
+        total_amount,
+        discount || 0.0,
+        final_amount,
+        payment_method,
+        payment_details ? (typeof payment_details === 'object' ? JSON.stringify(payment_details) : payment_details) : null,
+        amount_paid,
+        change_given,
+        fee_amount || 0.0,
+        offline_uuid || null
+      ]
+    );
+  }
   const saleId = saleResult.lastID;
 
   // 2. Add Items & Update stock
@@ -678,7 +705,7 @@ async function processSaleTransaction(db: any, saleData: any): Promise<number> {
 // 4. Sales Routes
 app.post('/api/sales', async (req, res) => {
   const db = await getDb();
-  
+
   try {
     await db.run("BEGIN TRANSACTION");
     const saleId = await processSaleTransaction(db, req.body);
@@ -694,7 +721,7 @@ app.post('/api/sales', async (req, res) => {
 app.post('/api/sales/sync', async (req, res) => {
   const db = await getDb();
   const salesBatch = req.body.sales; // Array of sales
-  
+
   if (!salesBatch || !Array.isArray(salesBatch)) {
     return res.status(400).json({ error: "Lote de vendas inválido" });
   }
@@ -790,7 +817,7 @@ app.get('/api/dashboard', async (req, res) => {
       SELECT p.name, SUM(si.quantity) as total_qty, SUM(si.price_total) as total_revenue
       FROM sale_items si
       JOIN products p ON si.product_id = p.id
-      GROUP BY si.product_id
+      GROUP BY si.product_id, p.name
       ORDER BY total_qty DESC
       LIMIT 5
     `);
@@ -867,7 +894,7 @@ app.get('/api/reports/ai-recommendations', async (req, res) => {
 
     // 2.5 Track and enforce daily query limit (20 requests/day)
     const todayStr = new Date().toLocaleDateString('sv-SE');
-    const usage = await db.get("SELECT count FROM ai_usage WHERE date = ?", [todayStr]);
+    const usage = await db.get("SELECT \"count\" FROM ai_usage WHERE date = ?", [todayStr]);
     const currentCount = usage ? usage.count : 0;
 
     if (currentCount >= 20) {
@@ -877,7 +904,7 @@ app.get('/api/reports/ai-recommendations', async (req, res) => {
     }
 
     await db.run(
-      "INSERT INTO ai_usage (date, count) VALUES (?, 1) ON CONFLICT(date) DO UPDATE SET count = count + 1",
+      "INSERT INTO ai_usage (date, \"count\") VALUES (?, 1) ON CONFLICT(date) DO UPDATE SET \"count\" = ai_usage.\"count\" + 1",
       [todayStr]
     );
 
@@ -1222,7 +1249,7 @@ app.post('/api/cash/close', async (req, res) => {
     if (!active) {
       return res.status(400).json({ error: "Nenhum caixa está aberto." });
     }
-    
+
     // Check permission of operator
     const operatorUser = await db.get("SELECT role FROM users WHERE username = ?", [active.operator_name]);
     let closedBy = active.operator_name;
@@ -1253,11 +1280,12 @@ app.post('/api/cash/close', async (req, res) => {
       if (sale.payment_details) {
         try {
           const details = typeof sale.payment_details === 'string' ? JSON.parse(sale.payment_details) : sale.payment_details;
-          sales_cash += parseFloat(details.dinheiro || 0);
-          sales_pix += parseFloat(details.pix || 0);
-          sales_card += parseFloat(details.cartao || 0);
-          sales_fiado += parseFloat(details.fiado || 0);
+          sales_cash += Number.parseFloat(details.dinheiro || 0);
+          sales_pix += Number.parseFloat(details.pix || 0);
+          sales_card += Number.parseFloat(details.cartao || 0);
+          sales_fiado += Number.parseFloat(details.fiado || 0);
         } catch (e) {
+          console.error("Erro ao fazer parse dos detalhes de pagamento da venda:", e);
           if (sale.payment_method === 'dinheiro') sales_cash += sale.final_amount;
           else if (sale.payment_method === 'pix') sales_pix += sale.final_amount;
           else if (sale.payment_method === 'cartao') sales_card += sale.final_amount;
@@ -1285,13 +1313,13 @@ app.post('/api/cash/close', async (req, res) => {
        WHERE id = ?`,
       [final_cash_reported, final_card_reported || 0.0, sales_cash, sales_pix, sales_card, sales_fiado, closedBy, active.id]
     );
-    
+
     const closed = await db.get("SELECT * FROM cash_sessions WHERE id = ?", [active.id]);
-    await logAction('CASH_SESSION_CLOSE', active.operator_name, { 
-      pdv_name: active.pdv_name, 
-      final_cash_reported, 
+    await logAction('CASH_SESSION_CLOSE', active.operator_name, {
+      pdv_name: active.pdv_name,
+      final_cash_reported,
       final_card_reported: final_card_reported || 0.0,
-      sales_cash, 
+      sales_cash,
       discrepancy: final_cash_reported - (active.initial_float + sales_cash),
       authorized_by: closedBy
     });
@@ -1582,7 +1610,7 @@ app.post('/api/products/bulk-edit', async (req, res) => {
   const db = await getDb();
   try {
     await db.run("BEGIN TRANSACTION");
-    
+
     let finalCategoryName = null;
     if (category_id) {
       const cat = await db.get("SELECT name FROM categories WHERE id = ?", [category_id]);
@@ -1645,7 +1673,7 @@ app.post('/api/inventory/adjust', async (req, res) => {
     if (!prod) return res.status(404).json({ error: "Produto não encontrado." });
 
     const previous_stock = prod.stock_qty;
-    
+
     await db.run("BEGIN TRANSACTION");
     await db.run("UPDATE products SET stock_qty = ? WHERE id = ?", [new_stock, product_id]);
     await db.run(
@@ -1654,15 +1682,15 @@ app.post('/api/inventory/adjust', async (req, res) => {
       [product_id, previous_stock, new_stock, reason, operator_name || 'Gerente']
     );
     await db.run("COMMIT");
-    
-    await logAction('STOCK_ADJUST', operator_name || 'Gerente', { 
-      product_id, 
-      product_name: prod.name, 
-      previous_stock, 
-      new_stock, 
-      reason 
+
+    await logAction('STOCK_ADJUST', operator_name || 'Gerente', {
+      product_id,
+      product_name: prod.name,
+      previous_stock,
+      new_stock,
+      reason
     });
-    
+
     res.json({ success: true, message: `Estoque do produto ${prod.name} ajustado com sucesso de ${previous_stock} para ${new_stock}.` });
   } catch (err: any) {
     await db.run("ROLLBACK");
@@ -1796,13 +1824,13 @@ app.post('/api/roles', async (req, res) => {
       [name.trim().toLowerCase(), description || '']
     );
     const roleId = result.lastID;
-    
+
     const modules = [
       'pos', 'dashboard', 'products', 'categories', 'adjustments', 'logs',
       'customers', 'payable', 'cash_sessions', 'sales', 'terminals', 'users',
       'employees', 'promotions', 'fiscal', 'invoice', 'inventory'
     ];
-    
+
     for (const mod of modules) {
       await db.run(
         "INSERT INTO role_permissions (role_id, module_name, can_view, can_write) VALUES (?, ?, 0, 0)",
@@ -1810,13 +1838,13 @@ app.post('/api/roles', async (req, res) => {
       );
     }
     await db.run("COMMIT");
-    
+
     const newRole = await db.get("SELECT * FROM roles WHERE id = ?", [roleId]);
     newRole.permissions = await db.all(
       "SELECT module_name, can_view, can_write FROM role_permissions WHERE role_id = ?",
       [roleId]
     );
-    
+
     await logAction('ROLE_CREATE', operator_name || 'Gerente', { id: roleId, name: name.trim().toLowerCase() });
     res.status(201).json(newRole);
   } catch (err: any) {
@@ -1843,13 +1871,13 @@ app.put('/api/roles/:id/permissions', async (req, res) => {
       );
     }
     await db.run("COMMIT");
-    
+
     const updatedRole = await db.get("SELECT * FROM roles WHERE id = ?", [id]);
     updatedRole.permissions = await db.all(
       "SELECT module_name, can_view, can_write FROM role_permissions WHERE role_id = ?",
       [id]
     );
-    
+
     await logAction('ROLE_PERMISSIONS_UPDATE', operator_name || 'Gerente', { id, name: updatedRole.name });
     res.json(updatedRole);
   } catch (err: any) {
@@ -1870,12 +1898,12 @@ app.delete('/api/roles/:id', async (req, res) => {
     if (['admin', 'manager', 'cashier'].includes(role.name)) {
       return res.status(400).json({ error: "Cargos do sistema (admin, manager, cashier) não podem ser excluídos." });
     }
-    
+
     const inUse = await db.get("SELECT id FROM users WHERE role = ? LIMIT 1", [role.name]);
     if (inUse) {
       return res.status(400).json({ error: "Não é possível excluir este cargo pois existem usuários associados a ele." });
     }
-    
+
     await db.run("DELETE FROM roles WHERE id = ?", [id]);
     await logAction('ROLE_DELETE', operator, { id, name: role.name });
     res.json({ success: true, message: "Cargo excluído com sucesso." });
@@ -1923,7 +1951,7 @@ app.get('/api/fiscal/settings', async (req, res) => {
              default_cfop, default_origin, default_csosn, default_cst_pis, default_cst_cofins, default_aliquot_icms, default_aliquot_pis, default_aliquot_cofins
       FROM fiscal_settings LIMIT 1
     `);
-    res.json(settings || { 
+    res.json(settings || {
       cnpj: '', razao_social: '', inscricao_estadual: '', environment: 2, state: 'PE', csc_id: '', csc_token: '', has_certificate: false,
       default_cfop: '5102', default_origin: '0', default_csosn: '102', default_cst_pis: '49', default_cst_cofins: '49',
       default_aliquot_icms: 18.0, default_aliquot_pis: 0.0, default_aliquot_cofins: 0.0
@@ -1934,7 +1962,7 @@ app.get('/api/fiscal/settings', async (req, res) => {
 });
 
 app.post('/api/fiscal/settings', async (req, res) => {
-  const { 
+  const {
     cnpj, razao_social, inscricao_estadual, environment, state, csc_id, csc_token, certificate_pfx, certificate_password, operator_name,
     default_cfop, default_origin, default_csosn, default_cst_pis, default_cst_cofins, default_aliquot_icms, default_aliquot_pis, default_aliquot_cofins
   } = req.body;
@@ -2223,8 +2251,11 @@ app.get('/api/fiscal/export-xmls', async (req, res) => {
 
     const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
 
+    const startStr = typeof startDate === 'string' ? startDate : 'export';
+    const endStr = typeof endDate === 'string' ? endDate : 'export';
+
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename=xmls_fiscal_${startDate || 'export'}_${endDate || 'export'}.zip`);
+    res.setHeader('Content-Disposition', `attachment; filename=xmls_fiscal_${startStr}_${endStr}.zip`);
     res.send(zipBuffer);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -2339,16 +2370,16 @@ app.post('/api/inventories/:id/items', async (req, res) => {
       [id, product.id]
     );
 
-    let newCounted = parseFloat(counted_qty) || 0.0;
+    let newCounted = Number.parseFloat(counted_qty) || 0.0;
     if (existingItem) {
       if (mode === 'increment') {
         newCounted = existingItem.counted_qty + newCounted;
       } else if (mode === 'add') {
         // default behaviour for scanned item is increment by 1 (or 0.1 for kg)
-        const step = product.unit === 'kg' ? 0.1 : 1.0;
+        const step = product.unit === 'kg' ? 0.1 : 1;
         newCounted = existingItem.counted_qty + step;
       }
-      
+
       const difference = newCounted - existingItem.expected_qty;
       await db.run(
         'UPDATE inventory_items SET counted_qty = ?, difference = ?, counted_at = CURRENT_TIMESTAMP WHERE id = ?',
@@ -2393,7 +2424,7 @@ app.put('/api/inventories/:id/items/:itemId', async (req, res) => {
       return res.status(404).json({ error: 'Item não encontrado' });
     }
 
-    const newCounted = parseFloat(counted_qty);
+    const newCounted = Number.parseFloat(counted_qty);
     const difference = newCounted - item.expected_qty;
 
     await db.run(
@@ -2654,14 +2685,14 @@ app.post('/api/recurring-accounts/generate', async (req, res) => {
 
     const monthStr = String(month).padStart(2, '0');
     const labelSuffix = `${monthStr}/${year}`;
-    
+
     let generatedCount = 0;
-    
+
     await db.run('BEGIN TRANSACTION');
     try {
       for (const rec of activeRecurring) {
         const uniqueDesc = `Recorrente: ${rec.description} - ${labelSuffix}`;
-        
+
         // Check if already generated
         const existing = await db.get("SELECT id FROM accounts_payable WHERE description = ?", [uniqueDesc]);
         if (!existing) {
@@ -2698,7 +2729,7 @@ app.get('/api/promotions', async (req, res) => {
     const promotions = await db.all(`
       SELECT * FROM promotions ORDER BY created_at DESC
     `);
-    
+
     const formatted = [];
     for (const promo of promotions) {
       const links = await db.all(`
@@ -2706,14 +2737,14 @@ app.get('/api/promotions', async (req, res) => {
         FROM promotion_products 
         WHERE promotion_id = ?
       `, [promo.id]);
-      
+
       formatted.push({
         ...promo,
         products: links,
         product_ids: links.map((l: any) => l.product_id)
       });
     }
-    
+
     res.json(formatted);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -2723,22 +2754,22 @@ app.get('/api/promotions', async (req, res) => {
 app.post('/api/promotions', async (req, res) => {
   const db = await getDb();
   const { name, description, discount_type, discount_value, start_date, end_date, product_ids, products, operator_name } = req.body;
-  
+
   if (!name || !discount_type || discount_value === undefined || !start_date || !end_date) {
     return res.status(400).json({ error: 'Nome, tipo de desconto, valor, data inicial e final são obrigatórios.' });
   }
-  
+
   try {
     await db.run('BEGIN TRANSACTION');
-    
+
     const result = await db.run(
       `INSERT INTO promotions (name, description, discount_type, discount_value, start_date, end_date, status)
        VALUES (?, ?, ?, ?, ?, ?, 'active')`,
       [name, description || null, discount_type, discount_value, start_date, end_date]
     );
-    
+
     const promoId = result.lastID;
-    
+
     if (products && Array.isArray(products)) {
       for (const item of products) {
         await db.run(
@@ -2754,7 +2785,7 @@ app.post('/api/promotions', async (req, res) => {
         );
       }
     }
-    
+
     await logAction('PROMOTION_CREATE', operator_name || 'Gerente', { id: promoId, name, discount_type, discount_value });
     await db.run('COMMIT');
     res.status(201).json({ success: true, id: promoId });
@@ -2768,24 +2799,24 @@ app.put('/api/promotions/:id', async (req, res) => {
   const db = await getDb();
   const { id } = req.params;
   const { name, description, discount_type, discount_value, start_date, end_date, status, product_ids, products, operator_name } = req.body;
-  
+
   if (!name || !discount_type || discount_value === undefined || !start_date || !end_date) {
     return res.status(400).json({ error: 'Nome, tipo de desconto, valor, data inicial e final são obrigatórios.' });
   }
-  
+
   try {
     await db.run('BEGIN TRANSACTION');
-    
+
     await db.run(
       `UPDATE promotions 
        SET name = ?, description = ?, discount_type = ?, discount_value = ?, start_date = ?, end_date = ?, status = ?
        WHERE id = ?`,
       [name, description || null, discount_type, discount_value, start_date, end_date, status || 'active', id]
     );
-    
+
     // Clear old product associations
     await db.run("DELETE FROM promotion_products WHERE promotion_id = ?", [id]);
-    
+
     // Insert new product associations
     if (products && Array.isArray(products)) {
       for (const item of products) {
@@ -2802,7 +2833,7 @@ app.put('/api/promotions/:id', async (req, res) => {
         );
       }
     }
-    
+
     await logAction('PROMOTION_UPDATE', operator_name || 'Gerente', { id, name, status });
     await db.run('COMMIT');
     res.json({ success: true });
@@ -2816,14 +2847,14 @@ app.delete('/api/promotions/:id', async (req, res) => {
   const db = await getDb();
   const { id } = req.params;
   const operator = (req.query.operator_name as string) || 'Gerente';
-  
+
   try {
     await db.run('BEGIN TRANSACTION');
     const promo = await db.get("SELECT name FROM promotions WHERE id = ?", [id]);
-    
+
     await db.run('DELETE FROM promotions WHERE id = ?', [id]);
     await db.run('DELETE FROM promotion_products WHERE promotion_id = ?', [id]);
-    
+
     await logAction('PROMOTION_DELETE', operator, { id, name: promo?.name });
     await db.run('COMMIT');
     res.json({ success: true });
@@ -2843,10 +2874,34 @@ app.get('/api/backup/list', async (req, res) => {
       .filter(f => f.startsWith('backup_') && f.endsWith('.db'))
       .map(f => {
         const stat = fs.statSync(path.join(BACKUP_DIR, f));
+        let createdAt = stat.mtime.toISOString();
+        
+        // Parse the exact timestamp from the backup filename (backup_type_YYYY-MM-DDTHH-mm-ss-SSSZ.db)
+        const dateMatch = f.match(/backup_(?:manual|startup|auto|safety_before_restore|safety_before_upload_restore)_([\d\-T]+Z?)\.db/);
+        if (dateMatch && dateMatch[1]) {
+          const parts = dateMatch[1].split('T');
+          if (parts.length === 2) {
+            const datePart = parts[0];
+            const timePart = parts[1].replace('Z', '');
+            const timeSubparts = timePart.split('-');
+            if (timeSubparts.length >= 3) {
+              const hh = timeSubparts[0];
+              const mm = timeSubparts[1];
+              const ss = timeSubparts[2];
+              const ms = timeSubparts[3] || '000';
+              const isoStr = `${datePart}T${hh}:${mm}:${ss}.${ms}Z`;
+              const parsedDate = new Date(isoStr);
+              if (!isNaN(parsedDate.getTime())) {
+                createdAt = parsedDate.toISOString();
+              }
+            }
+          }
+        }
+
         return {
           filename: f,
           size: stat.size,
-          created_at: stat.mtime.toISOString(),
+          created_at: createdAt,
           type: f.includes('_auto') || f.includes('_startup') ? 'Automático' : 'Manual'
         };
       })
@@ -2860,7 +2915,7 @@ app.get('/api/backup/list', async (req, res) => {
 app.post('/api/backup/create', async (req, res) => {
   const { operator_name } = req.body;
   try {
-    const filename = createBackupFile('manual');
+    const filename = await createBackupFile('manual');
     await logAction('BACKUP_CREATE', operator_name || 'Gerente', { filename });
     res.json({ success: true, filename });
   } catch (err: any) {
@@ -2906,18 +2961,15 @@ app.post('/api/backup/restore/:filename', async (req, res) => {
 
   try {
     // Create a safety backup first in case restore goes wrong
-    createBackupFile('safety_before_restore');
+    await createBackupFile('safety_before_restore');
 
-    // 1. Close active DB connection
-    await resetDbConnection();
+    // 1. Sync data from the SQLite backup file to PostgreSQL
+    await syncSqliteToPg(filePath);
 
-    // 2. Overwrite DB file
+    // 2. Keep the local fallback SQLite database up-to-date
     fs.copyFileSync(filePath, DB_FILE);
 
-    // 3. Re-initialize connection
-    await initDb();
-
-    // 4. Log the restore
+    // 3. Log the restore
     await logAction('BACKUP_RESTORE', operator_name || 'Gerente', { filename });
 
     res.json({ success: true, message: "Banco de dados restaurado com sucesso!" });
@@ -2935,7 +2987,7 @@ app.post('/api/backup/upload-restore', async (req, res) => {
 
   try {
     // Create safety backup
-    createBackupFile('safety_before_upload_restore');
+    await createBackupFile('safety_before_upload_restore');
 
     const buffer = Buffer.from(db_base64, 'base64');
 
@@ -2945,16 +2997,13 @@ app.post('/api/backup/upload-restore', async (req, res) => {
       return res.status(400).json({ error: "O arquivo enviado não é um banco de dados SQLite válido." });
     }
 
-    // 1. Close active DB connection
-    await resetDbConnection();
-
-    // 2. Write buffer to DB file
+    // 1. Write buffer to DB file
     fs.writeFileSync(DB_FILE, buffer);
 
-    // 3. Re-initialize connection
-    await initDb();
+    // 2. Sync SQLite to PostgreSQL
+    await syncSqliteToPg(DB_FILE);
 
-    // 4. Log the restore
+    // 3. Log the restore
     await logAction('BACKUP_UPLOAD_RESTORE', operator_name || 'Gerente', { filename });
 
     res.json({ success: true, message: "Banco de dados enviado e restaurado com sucesso!" });
@@ -2967,21 +3016,15 @@ app.post('/api/backup/upload-restore', async (req, res) => {
 // Scheduler for automatic backups
 function startBackupScheduler() {
   // Startup backup
-  try {
-    const fn = createBackupFile('startup');
-    console.log(`[Backup System] Startup auto-backup created successfully: ${fn}`);
-  } catch (err) {
-    console.error("[Backup System] Failed to run startup auto-backup:", err);
-  }
+  createBackupFile('startup')
+    .then(fn => console.log(`[Backup System] Startup auto-backup created successfully: ${fn}`))
+    .catch(err => console.error("[Backup System] Failed to run startup auto-backup:", err));
 
   // Backup every 24 hours
   setInterval(() => {
-    try {
-      const fn = createBackupFile('auto');
-      console.log(`[Backup System] Daily auto-backup created successfully: ${fn}`);
-    } catch (err) {
-      console.error("[Backup System] Failed to run daily auto-backup:", err);
-    }
+    createBackupFile('auto')
+      .then(fn => console.log(`[Backup System] Daily auto-backup created successfully: ${fn}`))
+      .catch(err => console.error("[Backup System] Failed to run daily auto-backup:", err));
   }, 24 * 60 * 60 * 1000);
 }
 

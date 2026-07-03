@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api, type Product, type Category, type Subcategory, type FiscalSettings } from '../services/api';
 import { toast } from '../services/toast';
 import { confirmService } from '../services/confirm';
-import { Search, Plus, Edit2, Trash2, X, SlidersHorizontal, FileText, CheckSquare, Square, Settings2 } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, X, SlidersHorizontal, FileText, CheckSquare, Square, Settings2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 /**
  * Componente Principal de Cadastro e Gerenciamento de Produtos
@@ -16,6 +17,10 @@ export default function Products() {
 
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Estados para ordenação da tabela
+  const [sortField, setSortField] = useState<string>('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   // Usuário logado no sistema para registro de auditoria
   const [currentUser] = useState(() => {
@@ -38,9 +43,9 @@ export default function Products() {
     default_csosn: '102',
     default_cst_pis: '49',
     default_cst_cofins: '49',
-    default_aliquot_icms: 18.0,
-    default_aliquot_pis: 0.0,
-    default_aliquot_cofins: 0.0
+    default_aliquot_icms: 18,
+    default_aliquot_pis: 0,
+    default_aliquot_cofins: 0
   });
 
   // Estados para edição em lote (Bulk Actions)
@@ -87,12 +92,17 @@ export default function Products() {
   const [adjustNewStock, setAdjustNewStock] = useState('');
   const [adjustReason, setAdjustReason] = useState('');
 
+  // Estados para Paginação
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
   // Busca lista de produtos
   const fetchProducts = async (query = '') => {
     setLoading(true);
     try {
       const res = await api.getProducts(query);
       setProducts(res);
+      setCurrentPage(1);
     } catch (e: any) {
       toast.error('Erro ao carregar produtos: ' + e.message);
     } finally {
@@ -128,7 +138,7 @@ export default function Products() {
     fetchFiscalSettings();
   }, []);
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = (e: React.SyntheticEvent) => {
     e.preventDefault();
     fetchProducts(searchTerm);
   };
@@ -172,9 +182,9 @@ export default function Products() {
     setCsosn(fiscalSettings.default_csosn || '102');
     setCstPis(fiscalSettings.default_cst_pis || '49');
     setCstCofins(fiscalSettings.default_cst_cofins || '49');
-    setAliquotIcms(fiscalSettings.default_aliquot_icms !== undefined ? fiscalSettings.default_aliquot_icms.toString() : '18.0');
-    setAliquotPis(fiscalSettings.default_aliquot_pis !== undefined ? fiscalSettings.default_aliquot_pis.toString() : '0.0');
-    setAliquotCofins(fiscalSettings.default_aliquot_cofins !== undefined ? fiscalSettings.default_aliquot_cofins.toString() : '0.0');
+    setAliquotIcms(fiscalSettings.default_aliquot_icms === undefined ? '18' : fiscalSettings.default_aliquot_icms.toString());
+    setAliquotPis(fiscalSettings.default_aliquot_pis === undefined ? '0' : fiscalSettings.default_aliquot_pis.toString());
+    setAliquotCofins(fiscalSettings.default_aliquot_cofins === undefined ? '0' : fiscalSettings.default_aliquot_cofins.toString());
     setIsFiscal(true);
 
     setIsModalOpen(true);
@@ -204,9 +214,9 @@ export default function Products() {
     setCsosn(product.csosn || '');
     setCstPis(product.cst_pis || '');
     setCstCofins(product.cst_cofins || '');
-    setAliquotIcms(product.aliquot_icms !== undefined ? product.aliquot_icms.toString() : '');
-    setAliquotPis(product.aliquot_pis !== undefined ? product.aliquot_pis.toString() : '');
-    setAliquotCofins(product.aliquot_cofins !== undefined ? product.aliquot_cofins.toString() : '');
+    setAliquotIcms(product.aliquot_icms === undefined ? '' : product.aliquot_icms.toString());
+    setAliquotPis(product.aliquot_pis === undefined ? '' : product.aliquot_pis.toString());
+    setAliquotCofins(product.aliquot_cofins === undefined ? '' : product.aliquot_cofins.toString());
     setIsFiscal(product.is_fiscal === undefined || product.is_fiscal === null || product.is_fiscal === 1 || product.is_fiscal === true);
 
     setIsModalOpen(true);
@@ -257,7 +267,7 @@ export default function Products() {
   };
 
   // Enviar formulário de criação/edição
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (!name || !priceBuy || !priceSell || !stockQty) {
       toast.warning('Por favor preencha todos os campos obrigatórios (Nome, Preço de Custo, Preço de Venda e Estoque).');
@@ -269,12 +279,12 @@ export default function Products() {
       barcode: barcode.trim() || '',
       barcodes,
       name,
-      category_id: categoryIdField ? parseInt(categoryIdField) : null,
-      subcategory_id: subcategoryIdField ? parseInt(subcategoryIdField) : null,
-      price_buy: parseFloat(priceBuy),
-      price_sell: parseFloat(priceSell),
-      stock_qty: parseFloat(stockQty),
-      min_stock: parseFloat(minStock || '0'),
+      category_id: categoryIdField ? Number.parseInt(categoryIdField) : null,
+      subcategory_id: subcategoryIdField ? Number.parseInt(subcategoryIdField) : null,
+      price_buy: Number.parseFloat(priceBuy),
+      price_sell: Number.parseFloat(priceSell),
+      stock_qty: Number.parseFloat(stockQty),
+      min_stock: Number.parseFloat(minStock || '0'),
       unit,
       operator_name: currentUser.username,
       ncm,
@@ -284,9 +294,9 @@ export default function Products() {
       csosn,
       cst_pis: cstPis,
       cst_cofins: cstCofins,
-      aliquot_icms: aliquotIcms !== '' ? parseFloat(aliquotIcms) : undefined,
-      aliquot_pis: aliquotPis !== '' ? parseFloat(aliquotPis) : undefined,
-      aliquot_cofins: aliquotCofins !== '' ? parseFloat(aliquotCofins) : undefined,
+      aliquot_icms: aliquotIcms === '' ? undefined : Number.parseFloat(aliquotIcms),
+      aliquot_pis: aliquotPis === '' ? undefined : Number.parseFloat(aliquotPis),
+      aliquot_cofins: aliquotCofins === '' ? undefined : Number.parseFloat(aliquotCofins),
       is_fiscal: isFiscal ? 1 : 0
     };
 
@@ -313,7 +323,7 @@ export default function Products() {
   };
 
   // Executar Ajuste de Estoque
-  const handleAdjustSubmit = async (e: React.FormEvent) => {
+  const handleAdjustSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (!adjustingProduct || adjustNewStock === '' || !adjustReason.trim()) {
       toast.warning('Preencha a quantidade e o motivo do ajuste.');
@@ -323,7 +333,7 @@ export default function Products() {
     try {
       const res = await api.adjustInventory({
         product_id: adjustingProduct.id,
-        new_stock: parseFloat(adjustNewStock),
+        new_stock: Number.parseFloat(adjustNewStock),
         reason: adjustReason.trim(),
         operator_name: currentUser.username
       });
@@ -338,7 +348,7 @@ export default function Products() {
   };
 
   // Executar Atualização em Lote (Bulk Actions)
-  const handleBulkSubmit = async (e: React.FormEvent) => {
+  const handleBulkSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (selectedProducts.length === 0) {
       toast.warning('Nenhum produto selecionado.');
@@ -347,14 +357,14 @@ export default function Products() {
 
     const priceAdjust = bulkPriceAdjustValue ? {
       type: bulkPriceAdjustType,
-      value: parseFloat(bulkPriceAdjustValue)
+      value: Number.parseFloat(bulkPriceAdjustValue)
     } : undefined;
 
     try {
       const res = await api.bulkEditProducts({
         ids: selectedProducts,
-        category_id: bulkCategoryId ? parseInt(bulkCategoryId) : undefined,
-        subcategory_id: bulkSubcategoryId ? parseInt(bulkSubcategoryId) : undefined,
+        category_id: bulkCategoryId ? Number.parseInt(bulkCategoryId) : undefined,
+        subcategory_id: bulkSubcategoryId ? Number.parseInt(bulkSubcategoryId) : undefined,
         price_sell_adjust: priceAdjust,
         operator_name: currentUser.username
       });
@@ -408,7 +418,7 @@ export default function Products() {
       </tr>
     `).join('');
 
-    newWindow.document.write(`
+    (newWindow.document as any).write(`
       <html>
         <head>
           <title>Relatorio_Estoque_${new Date().toISOString().slice(0, 10)}</title>
@@ -521,12 +531,205 @@ export default function Products() {
   };
 
   const filteredSubcategories = subcategories.filter(s =>
-    s.category_id === (categoryIdField ? parseInt(categoryIdField) : -1)
+    s.category_id === (categoryIdField ? Number.parseInt(categoryIdField) : -1)
   );
 
   const bulkFilteredSubcategories = subcategories.filter(s =>
-    s.category_id === (bulkCategoryId ? parseInt(bulkCategoryId) : -1)
+    s.category_id === (bulkCategoryId ? Number.parseInt(bulkCategoryId) : -1)
   );
+
+  // Handlers para ordenação
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const renderSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ArrowUpDown size={12} style={{ marginLeft: '4px', opacity: 0.4, verticalAlign: 'middle' }} />;
+    }
+    if (sortDirection === 'asc') {
+      return <ArrowUp size={12} className="text-primary" style={{ marginLeft: '4px', verticalAlign: 'middle' }} />;
+    }
+    return <ArrowDown size={12} className="text-primary" style={{ marginLeft: '4px', verticalAlign: 'middle' }} />;
+  };
+
+  const renderSortableHeader = (field: string, label: string, extraStyle: React.CSSProperties = {}) => {
+    return (
+      <th
+        style={{ cursor: 'pointer', userSelect: 'none', ...extraStyle }}
+        onClick={() => handleSort(field)}
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+          {label}
+          {renderSortIcon(field)}
+        </span>
+      </th>
+    );
+  };
+
+  // Cálculo de Paginação e Ordenação
+  const sortedProducts = [...products].sort((a, b) => {
+    let aVal: any = a[sortField as keyof typeof a];
+    let bVal: any = b[sortField as keyof typeof b];
+
+    if (sortField === 'category') {
+      aVal = getCategoryName(a.category_id);
+      bVal = getCategoryName(b.category_id);
+    } else if (sortField === 'subcategory') {
+      aVal = getSubcategoryName(a.subcategory_id);
+      bVal = getSubcategoryName(b.subcategory_id);
+    }
+
+    aVal ??= '';
+    bVal ??= '';
+
+    if (typeof aVal === 'string') {
+      return sortDirection === 'asc'
+        ? aVal.localeCompare(bVal, 'pt-BR', { numeric: true })
+        : bVal.localeCompare(aVal, 'pt-BR', { numeric: true });
+    }
+
+    if (typeof aVal === 'number') {
+      return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+    }
+
+    return 0;
+  });
+
+  const indexOfLastProduct = currentPage * itemsPerPage;
+  const indexOfFirstProduct = indexOfLastProduct - itemsPerPage;
+  const currentProducts = sortedProducts.slice(indexOfFirstProduct, indexOfLastProduct);
+  const totalPages = Math.ceil(products.length / itemsPerPage);
+
+  // Renderiza a tabela de produtos, spinner ou mensagem vazia
+  const renderTableContent = () => {
+    if (loading) {
+      return (
+        <div className="flex-center py-5" style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+          <div className="spinner" style={{ width: '32px', height: '32px', border: '3px solid rgba(59,130,246,0.1)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+        </div>
+      );
+    }
+
+    if (products.length === 0) {
+      return (
+        <div className="empty-message py-5 text-center text-muted" style={{ padding: '40px 0' }}>Nenhum produto encontrado.</div>
+      );
+    }
+
+    return (
+      <div className="table-responsive">
+        <table className="table" style={{ minWidth: '1150px', width: '100%' }}>
+          <thead>
+            <tr>
+              <th style={{ width: '40px' }} className="text-center">
+                <button type="button" onClick={handleSelectAll} className="btn-icon">
+                  {selectedProducts.length === products.length ? (
+                    <CheckSquare size={18} className="text-primary" />
+                  ) : (
+                    <Square size={18} className="text-muted" />
+                  )}
+                </button>
+              </th>
+              {renderSortableHeader('code', 'ID', { width: '40px' })}
+              {renderSortableHeader('barcode', 'Cód. Barras', { width: '120px' })}
+              {renderSortableHeader('name', 'Nome')}
+              {renderSortableHeader('category', 'Categoria')}
+              {renderSortableHeader('subcategory', 'Subcategoria')}
+              {renderSortableHeader('price_buy', 'R$ Compra', { width: '90px', textAlign: 'right' })}
+              {renderSortableHeader('price_sell', 'R$ Venda', { width: '90px', textAlign: 'right' })}
+              {renderSortableHeader('stock_qty', 'Estoque', { width: '90px', textAlign: 'center' })}
+              <th className="text-center" style={{ width: '80px' }}>Fiscal</th>
+              <th className="text-center" style={{ width: '90px' }}>Status</th>
+              <th className="text-center" style={{ width: '90px' }}>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {currentProducts.map((product) => {
+              const isSelected = selectedProducts.includes(product.id);
+              return (
+                <tr key={product.id} className={`table-row ${isSelected ? 'row-selected' : ''}`} style={isSelected ? { backgroundColor: 'rgba(59, 130, 246, 0.05)' } : {}}>
+                  <td className="text-center">
+                    <button type="button" onClick={() => handleSelectProduct(product.id)} className="btn-icon">
+                      {isSelected ? (
+                        <CheckSquare size={18} className="text-primary" />
+                      ) : (
+                        <Square size={18} className="text-muted" />
+                      )}
+                    </button>
+                  </td>
+                  <td className="text-monospace text-xs text-muted font-bold">{product.code || '-'}</td>
+                  <td className="text-monospace">
+                    <div>{product.barcode || '-'}</div>
+                    {product.barcodes && product.barcodes.length > 0 && (
+                      <div className="text-[10px] text-muted truncate max-w-[150px]" title={product.barcodes.join(', ')} style={{ fontSize: '9px', opacity: 0.8 }}>
+                        Alt: {product.barcodes.join(', ')}
+                      </div>
+                    )}
+                  </td>
+                  <td className="font-semibold">{product.name}</td>
+                  <td>
+                    <span className="category-tag bg-blue-500/10 text-blue-400 border border-blue-500/20" style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
+                      {getCategoryName(product.category_id)}
+                    </span>
+                  </td>
+                  <td className="text-muted text-sm">{getSubcategoryName(product.subcategory_id)}</td>
+                  <td className="text-right text-muted">{formatCurrency(product.price_buy)}</td>
+                  <td className="text-right font-semibold">{formatCurrency(product.price_sell)}</td>
+                  <td className="text-center">
+                    <span className="font-semibold">{product.stock_qty}</span>{' '}
+                    <span className="text-muted text-xs">{product.unit}</span>
+                  </td>
+                  <td className="text-center">
+                    {product.is_fiscal === undefined || product.is_fiscal === null || product.is_fiscal === 1 || product.is_fiscal === true ? (
+                      <span className="badge success text-xs py-0.5 px-1.5" style={{ fontSize: '10px' }}>Sim</span>
+                    ) : (
+                      <span className="badge bg-gray-800 text-gray-400 text-xs py-0.5 px-1.5" style={{ fontSize: '10px' }}>Não</span>
+                    )}
+                  </td>
+                  <td className="text-center">
+                    <span className={getStockStatusClass(product.stock_qty, product.min_stock)}>
+                      {getStockStatusText(product.stock_qty, product.min_stock)}
+                    </span>
+                  </td>
+                  <td className="text-center">
+                    <div className="action-buttons flex-center gap-1" style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
+                      <button
+                        className="btn-icon btn-edit"
+                        onClick={() => openEditModal(product)}
+                        title="Editar Produto"
+                      >
+                        <Edit2 size={15} />
+                      </button>
+                      <button
+                        className="btn-icon text-blue-400 hover:text-blue-200"
+                        onClick={() => openAdjustModal(product)}
+                        title="Ajustar Estoque"
+                      >
+                        <SlidersHorizontal size={15} />
+                      </button>
+                      <button
+                        className="btn-icon btn-delete"
+                        onClick={() => handleDelete(product)}
+                        title="Excluir Produto"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   return (
     <div className="products-page animate-fade-in">
@@ -610,8 +813,9 @@ export default function Products() {
           ) : (
             <form onSubmit={handleBulkSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', alignItems: 'end' }}>
               <div>
-                <label className="block text-xs text-muted mb-1 font-bold">Alterar Categoria</label>
+                <label htmlFor="bulk-category" className="block text-xs text-muted mb-1 font-bold">Alterar Categoria</label>
                 <select
+                  id="bulk-category"
                   value={bulkCategoryId}
                   onChange={(e) => {
                     setBulkCategoryId(e.target.value);
@@ -627,8 +831,9 @@ export default function Products() {
               </div>
 
               <div>
-                <label className="block text-xs text-muted mb-1 font-bold">Alterar Subcategoria</label>
+                <label htmlFor="bulk-subcategory" className="block text-xs text-muted mb-1 font-bold">Alterar Subcategoria</label>
                 <select
+                  id="bulk-subcategory"
                   value={bulkSubcategoryId}
                   onChange={(e) => setBulkSubcategoryId(e.target.value)}
                   disabled={!bulkCategoryId}
@@ -642,7 +847,7 @@ export default function Products() {
               </div>
 
               <div>
-                <label className="block text-xs text-muted mb-1 font-bold">Reajustar Preço de Venda</label>
+                <label htmlFor="bulk-price-adjust-value" className="block text-xs text-muted mb-1 font-bold">Reajustar Preço de Venda</label>
                 <div className="flex gap-2">
                   <select
                     value={bulkPriceAdjustType}
@@ -654,6 +859,7 @@ export default function Products() {
                     <option value="fixed">R$</option>
                   </select>
                   <input
+                    id="bulk-price-adjust-value"
                     type="number"
                     step="any"
                     placeholder="Ex: +5 ou -2.5"
@@ -676,125 +882,67 @@ export default function Products() {
 
       {/* Tabela de Produtos */}
       <div className="glass-card p-0 overflow-hidden">
-        {loading ? (
-          <div className="flex-center py-5" style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
-            <div className="spinner" style={{ width: '32px', height: '32px', border: '3px solid rgba(59,130,246,0.1)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-          </div>
-        ) : products.length === 0 ? (
-          <div className="empty-message py-5 text-center text-muted" style={{ padding: '40px 0' }}>Nenhum produto encontrado.</div>
-        ) : (
-          <div className="table-responsive">
-            <table className="table" style={{ minWidth: '1250px', width: '100%' }}>
-              <thead>
-                <tr>
-                  <th style={{ width: '40px' }} className="text-center">
-                    <button type="button" onClick={handleSelectAll} className="btn-icon">
-                      {selectedProducts.length === products.length ? (
-                        <CheckSquare size={18} className="text-primary" />
-                      ) : (
-                        <Square size={18} className="text-muted" />
-                      )}
-                    </button>
-                  </th>
-                  <th style={{ width: '60px' }}>ID</th>
-                  <th style={{ width: '150px' }}>Cód. Barras</th>
-                  <th>Nome</th>
-                  <th>Categoria</th>
-                  <th>Subcategoria</th>
-                  <th className="text-right" style={{ width: '100px' }}>R$ Compra</th>
-                  <th className="text-right" style={{ width: '100px' }}>R$ Venda</th>
-                  <th className="text-center" style={{ width: '100px' }}>Estoque</th>
-                  <th className="text-center" style={{ width: '80px' }}>Fiscal</th>
-                  <th className="text-center" style={{ width: '110px' }}>Status</th>
-                  <th className="text-center" style={{ width: '100px' }}>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((product) => {
-                  const isSelected = selectedProducts.includes(product.id);
+        {renderTableContent()}
+
+        {/* Paginação */}
+        {!loading && products.length > 0 && (
+          <div className="flex-between px-4 py-3" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderTop: '1px solid var(--border)' }}>
+            <div className="text-sm text-muted">
+              Exibindo <span className="font-semibold text-white">{Math.min(indexOfFirstProduct + 1, products.length)}</span> a{' '}
+              <span className="font-semibold text-white">{Math.min(indexOfLastProduct, products.length)}</span> de{' '}
+              <span className="font-semibold text-white">{products.length}</span> produtos
+            </div>
+            
+            <div className="flex gap-1" style={{ display: 'flex', gap: '4px' }}>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="btn btn-secondary py-1 px-3 text-xs"
+                style={{ padding: '6px 12px', minHeight: 'unset' }}
+              >
+                Anterior
+              </button>
+              
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(page => {
+                  return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
+                })
+                .map((page, index, array) => {
+                  const showEllipsisBefore = index > 0 && page - array[index - 1] > 1;
                   return (
-                    <tr key={product.id} className={`table-row ${isSelected ? 'row-selected' : ''}`} style={isSelected ? { backgroundColor: 'rgba(59, 130, 246, 0.05)' } : {}}>
-                      <td className="text-center">
-                        <button type="button" onClick={() => handleSelectProduct(product.id)} className="btn-icon">
-                          {isSelected ? (
-                            <CheckSquare size={18} className="text-primary" />
-                          ) : (
-                            <Square size={18} className="text-muted" />
-                          )}
-                        </button>
-                      </td>
-                      <td className="text-monospace text-xs text-muted font-bold">{product.code || '-'}</td>
-                      <td className="text-monospace">
-                        <div>{product.barcode || '-'}</div>
-                        {product.barcodes && product.barcodes.length > 0 && (
-                          <div className="text-[10px] text-muted truncate max-w-[150px]" title={product.barcodes.join(', ')} style={{ fontSize: '9px', opacity: 0.8 }}>
-                            Alt: {product.barcodes.join(', ')}
-                          </div>
-                        )}
-                      </td>
-                      <td className="font-semibold">{product.name}</td>
-                      <td>
-                        <span className="category-tag bg-blue-500/10 text-blue-400 border border-blue-500/20" style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px' }}>
-                          {getCategoryName(product.category_id)}
-                        </span>
-                      </td>
-                      <td className="text-muted text-sm">{getSubcategoryName(product.subcategory_id)}</td>
-                      <td className="text-right text-muted">{formatCurrency(product.price_buy)}</td>
-                      <td className="text-right font-semibold">{formatCurrency(product.price_sell)}</td>
-                      <td className="text-center">
-                        <span className="font-semibold">{product.stock_qty}</span>{' '}
-                        <span className="text-muted text-xs">{product.unit}</span>
-                      </td>
-                      <td className="text-center">
-                        {product.is_fiscal === undefined || product.is_fiscal === null || product.is_fiscal === 1 || product.is_fiscal === true ? (
-                          <span className="badge success text-xs py-0.5 px-1.5" style={{ fontSize: '10px' }}>Sim</span>
-                        ) : (
-                          <span className="badge bg-gray-800 text-gray-400 text-xs py-0.5 px-1.5" style={{ fontSize: '10px' }}>Não</span>
-                        )}
-                      </td>
-                      <td className="text-center">
-                        <span className={getStockStatusClass(product.stock_qty, product.min_stock)}>
-                          {getStockStatusText(product.stock_qty, product.min_stock)}
-                        </span>
-                      </td>
-                      <td className="text-center">
-                        <div className="action-buttons flex-center gap-1" style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
-                          <button
-                            className="btn-icon btn-edit"
-                            onClick={() => openEditModal(product)}
-                            title="Editar Produto"
-                          >
-                            <Edit2 size={15} />
-                          </button>
-                          <button
-                            className="btn-icon text-blue-400 hover:text-blue-200"
-                            onClick={() => openAdjustModal(product)}
-                            title="Ajustar Estoque"
-                          >
-                            <SlidersHorizontal size={15} />
-                          </button>
-                          <button
-                            className="btn-icon btn-delete"
-                            onClick={() => handleDelete(product)}
-                            title="Excluir Produto"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                    <div key={page} style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      {showEllipsisBefore && <span className="text-muted text-xs px-1">...</span>}
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage(page)}
+                        className={`btn py-1 px-3 text-xs ${currentPage === page ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ padding: '6px 12px', minHeight: 'unset', minWidth: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        {page}
+                      </button>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="btn btn-secondary py-1 px-3 text-xs"
+                style={{ padding: '6px 12px', minHeight: 'unset' }}
+              >
+                Próximo
+              </button>
+            </div>
           </div>
         )}
       </div>
 
       {/* CRUD Product Add/Edit Modal */}
-      {isModalOpen && (
-        <div className="modal-backdrop">
-          <div className="glass-card modal-content animate-slide-up" style={{ maxWidth: '650px' }}>
+      {isModalOpen && createPortal(
+        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="glass-card modal-content animate-slide-up" style={{ maxWidth: '650px', width: '95%', padding: '24px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', top: 'auto', left: 'auto', transform: 'none' }}>
             <div className="modal-header">
               <h3>{editingProduct ? 'Editar Produto' : 'Cadastrar Novo Produto'}</h3>
               <button className="btn-icon" onClick={() => setIsModalOpen(false)}>
@@ -805,8 +953,9 @@ export default function Products() {
             <form onSubmit={handleSubmit} className="modal-form">
               <div className="form-row">
                 <div className="form-group col-4">
-                  <label>Código Interno (SKU)</label>
+                  <label htmlFor="prod-sku">Código Interno (SKU)</label>
                   <input
+                    id="prod-sku"
                     type="text"
                     pattern="[0-9]*"
                     value={code}
@@ -816,8 +965,9 @@ export default function Products() {
                   />
                 </div>
                 <div className="form-group col-4">
-                  <label>Cód. Barras Principal</label>
+                  <label htmlFor="prod-barcode">Cód. Barras Principal</label>
                   <input
+                    id="prod-barcode"
                     type="text"
                     value={barcode}
                     onChange={(e) => setBarcode(e.target.value)}
@@ -826,8 +976,9 @@ export default function Products() {
                   />
                 </div>
                 <div className="form-group col-4">
-                  <label>Nome do Produto *</label>
+                  <label htmlFor="prod-name">Nome do Produto *</label>
                   <input
+                    id="prod-name"
                     type="text"
                     required
                     value={name}
@@ -840,11 +991,12 @@ export default function Products() {
 
               {/* Vincular códigos de barras alternativos (Embalagens/Troca) */}
               <div className="p-3 bg-white/5 rounded-lg border border-white/5 mb-3" style={{ padding: '12px', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px', marginBottom: '12px' }}>
-                <label className="block text-xs text-muted mb-2 font-bold uppercase tracking-wider" style={{ fontSize: '11px', opacity: 0.8, marginBottom: '8px' }}>
+                <label htmlFor="prod-alt-barcode" className="block text-xs text-muted mb-2 font-bold uppercase tracking-wider" style={{ fontSize: '11px', opacity: 0.8, marginBottom: '8px' }}>
                   Códigos de Barras Alternativos (Troca de Embalagem)
                 </label>
                 <div className="flex gap-2" style={{ display: 'flex', gap: '8px' }}>
                   <input
+                    id="prod-alt-barcode"
                     type="text"
                     value={newBarcodeField}
                     onChange={(e) => setNewBarcodeField(e.target.value)}
@@ -871,7 +1023,7 @@ export default function Products() {
                 {barcodes.length > 0 ? (
                   <div className="flex flex-wrap gap-1 max-h-[80px] overflow-y-auto mt-2" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '8px', maxHeight: '80px', overflowY: 'auto' }}>
                     {barcodes.map((b, idx) => (
-                      <span key={idx} className="badge bg-white/10 text-white flex items-center gap-1 font-mono text-[10px] py-1 px-2" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '4px', backgroundColor: 'rgba(255,255,255,0.08)' }}>
+                      <span key={b} className="badge bg-white/10 text-white flex items-center gap-1 font-mono text-[10px] py-1 px-2" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '4px', backgroundColor: 'rgba(255,255,255,0.08)' }}>
                         {b}
                         <button
                           type="button"
@@ -891,8 +1043,9 @@ export default function Products() {
 
               <div className="form-row">
                 <div className="form-group col-6">
-                  <label>Categoria Mercadológica *</label>
+                  <label htmlFor="prod-category">Categoria Mercadológica *</label>
                   <select
+                    id="prod-category"
                     required
                     value={categoryIdField}
                     onChange={(e) => {
@@ -908,8 +1061,9 @@ export default function Products() {
                   </select>
                 </div>
                 <div className="form-group col-6">
-                  <label>Subcategoria</label>
+                  <label htmlFor="prod-subcategory">Subcategoria</label>
                   <select
+                    id="prod-subcategory"
                     value={subcategoryIdField}
                     onChange={(e) => setSubcategoryIdField(e.target.value)}
                     disabled={!categoryIdField}
@@ -925,8 +1079,9 @@ export default function Products() {
 
               <div className="form-row">
                 <div className="form-group col-4">
-                  <label>Unidade *</label>
+                  <label htmlFor="prod-unit">Unidade *</label>
                   <select
+                    id="prod-unit"
                     value={unit}
                     onChange={(e) => setUnit(e.target.value)}
                     className="input-field select-field"
@@ -939,8 +1094,9 @@ export default function Products() {
                   </select>
                 </div>
                 <div className="form-group col-4">
-                  <label>Estoque Mínimo</label>
+                  <label htmlFor="prod-min-stock">Estoque Mínimo</label>
                   <input
+                    id="prod-min-stock"
                     type="number"
                     step="any"
                     value={minStock}
@@ -949,8 +1105,9 @@ export default function Products() {
                   />
                 </div>
                 <div className="form-group col-4">
-                  <label>Quantidade em Estoque *</label>
+                  <label htmlFor="prod-stock-qty">Quantidade em Estoque *</label>
                   <input
+                    id="prod-stock-qty"
                     type="number"
                     step="any"
                     required
@@ -966,8 +1123,9 @@ export default function Products() {
 
               <div className="form-row">
                 <div className="form-group col-6">
-                  <label>Preço de Custo (Compra) *</label>
+                  <label htmlFor="prod-price-buy">Preço de Custo (Compra) *</label>
                   <input
+                    id="prod-price-buy"
                     type="number"
                     step="0.01"
                     required
@@ -978,8 +1136,9 @@ export default function Products() {
                   />
                 </div>
                 <div className="form-group col-6">
-                  <label>Preço de Venda *</label>
+                  <label htmlFor="prod-price-sell">Preço de Venda *</label>
                   <input
+                    id="prod-price-sell"
                     type="number"
                     step="0.01"
                     required
@@ -1010,8 +1169,9 @@ export default function Products() {
                   <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div className="form-row">
                       <div className="form-group col-4">
-                        <label>NCM *</label>
+                        <label htmlFor="prod-ncm">NCM *</label>
                         <input
+                          id="prod-ncm"
                           type="text"
                           required={isFiscal}
                           placeholder="Ex: 22029900"
@@ -1022,8 +1182,9 @@ export default function Products() {
                         />
                       </div>
                       <div className="form-group col-4">
-                        <label>CEST</label>
+                        <label htmlFor="prod-cest">CEST</label>
                         <input
+                          id="prod-cest"
                           type="text"
                           placeholder="Ex: 0301000"
                           maxLength={7}
@@ -1033,8 +1194,9 @@ export default function Products() {
                         />
                       </div>
                       <div className="form-group col-4">
-                        <label>CFOP *</label>
+                        <label htmlFor="prod-cfop">CFOP *</label>
                         <input
+                          id="prod-cfop"
                           type="text"
                           required={isFiscal}
                           placeholder="Ex: 5102"
@@ -1047,8 +1209,9 @@ export default function Products() {
 
                     <div className="form-row">
                       <div className="form-group col-4">
-                        <label>Origem *</label>
+                        <label htmlFor="prod-origin">Origem *</label>
                         <select
+                          id="prod-origin"
                           value={origin}
                           onChange={(e) => setOrigin(e.target.value)}
                           className="input-field select-field"
@@ -1059,8 +1222,9 @@ export default function Products() {
                         </select>
                       </div>
                       <div className="form-group col-4">
-                        <label>CSOSN *</label>
+                        <label htmlFor="prod-csosn">CSOSN *</label>
                         <input
+                          id="prod-csosn"
                           type="text"
                           required={isFiscal}
                           placeholder="Ex: 102"
@@ -1070,8 +1234,9 @@ export default function Products() {
                         />
                       </div>
                       <div className="form-group col-4">
-                        <label>Alíquota ICMS (%) *</label>
+                        <label htmlFor="prod-aliquot-icms">Alíquota ICMS (%) *</label>
                         <input
+                          id="prod-aliquot-icms"
                           type="number"
                           step="any"
                           required={isFiscal}
@@ -1085,8 +1250,9 @@ export default function Products() {
 
                     <div className="form-row">
                       <div className="form-group col-3">
-                        <label>CST PIS *</label>
+                        <label htmlFor="prod-cst-pis">CST PIS *</label>
                         <input
+                          id="prod-cst-pis"
                           type="text"
                           required={isFiscal}
                           placeholder="49"
@@ -1096,8 +1262,9 @@ export default function Products() {
                         />
                       </div>
                       <div className="form-group col-3">
-                        <label>Alíq. PIS (%) *</label>
+                        <label htmlFor="prod-aliquot-pis">Alíq. PIS (%) *</label>
                         <input
+                          id="prod-aliquot-pis"
                           type="number"
                           step="any"
                           required={isFiscal}
@@ -1108,8 +1275,9 @@ export default function Products() {
                         />
                       </div>
                       <div className="form-group col-3">
-                        <label>CST COFINS *</label>
+                        <label htmlFor="prod-cst-cofins">CST COFINS *</label>
                         <input
+                          id="prod-cst-cofins"
                           type="text"
                           required={isFiscal}
                           placeholder="49"
@@ -1119,8 +1287,9 @@ export default function Products() {
                         />
                       </div>
                       <div className="form-group col-3">
-                        <label>Alíq. COFINS *</label>
+                        <label htmlFor="prod-aliquot-cofins">Alíq. COFINS *</label>
                         <input
+                          id="prod-aliquot-cofins"
                           type="number"
                           step="any"
                           required={isFiscal}
@@ -1149,13 +1318,14 @@ export default function Products() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal de Ajuste Manual de Estoque */}
-      {adjustingProduct && (
-        <div className="modal-backdrop">
-          <div className="glass-card modal-content animate-slide-up" style={{ maxWidth: '450px' }}>
+      {adjustingProduct && createPortal(
+        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="glass-card modal-content animate-slide-up" style={{ maxWidth: '450px', width: '95%', padding: '24px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', top: 'auto', left: 'auto', transform: 'none' }}>
             <div className="modal-header">
               <h3>Ajustar Estoque</h3>
               <button className="btn-icon" onClick={() => setAdjustingProduct(null)}>
@@ -1170,8 +1340,9 @@ export default function Products() {
               </div>
 
               <div className="form-group">
-                <label>Novo Estoque *</label>
+                <label htmlFor="adjust-new-stock">Novo Estoque *</label>
                 <input
+                  id="adjust-new-stock"
                   type="number"
                   step="any"
                   required
@@ -1184,8 +1355,9 @@ export default function Products() {
               </div>
 
               <div className="form-group mt-3">
-                <label>Motivo do Ajuste (Justificativa) *</label>
+                <label htmlFor="adjust-reason">Motivo do Ajuste (Justificativa) *</label>
                 <input
+                  id="adjust-reason"
                   type="text"
                   required
                   placeholder="Ex: Contagem manual, quebra, avaria"
@@ -1209,7 +1381,8 @@ export default function Products() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -8,7 +8,7 @@ import { confirmService, type ConfirmOptions } from './services/confirm';
 
 // Real Pages
 import Dashboard from './pages/Dashboard';
-import POS from './pages/POS';
+import Pos from './pages/POS';
 import Products from './pages/Products';
 import Customers from './pages/Customers';
 import Portal from './pages/Portal';
@@ -60,6 +60,16 @@ function App() {
     return type === 'view' ? perm.can_view === 1 : perm.can_write === 1;
   };
 
+  const getAdminElement = () => {
+    if (hasPermission('dashboard')) {
+      return <Dashboard />;
+    }
+    if (currentUser?.role === 'cashier') {
+      return <Navigate to="/pos" replace />;
+    }
+    return <Navigate to="/" replace />;
+  };
+
   useEffect(() => {
     const loadPermissions = async () => {
       if (currentUser) {
@@ -97,6 +107,17 @@ function App() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const removeToast = (id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const handleNewToast = (newToast: ToastEvent) => {
+    setToasts((prev) => [...prev, newToast]);
+    setTimeout(() => {
+      removeToast(newToast.id);
+    }, 3000);
+  };
+
   useEffect(() => {
     // 1. Subscribe to connection status
     const unsubscribeConn = connectionService.subscribe((status) => {
@@ -104,12 +125,7 @@ function App() {
     });
 
     // 2. Subscribe to toast notifications
-    const unsubscribeToast = toast.subscribe((newToast) => {
-      setToasts((prev) => [...prev, newToast]);
-      setTimeout(() => {
-        setToasts((prev) => prev.filter((t) => t.id !== newToast.id));
-      }, 3000);
-    });
+    const unsubscribeToast = toast.subscribe(handleNewToast);
 
     // Subscribe to custom confirm dialogs
     const unsubscribeConfirm = confirmService.subscribe((options, resolve) => {
@@ -167,15 +183,13 @@ function App() {
       if (location.pathname !== '/pos') {
         navigate('/pos');
       }
-    } else {
+    } else if (location.pathname === '/login') {
       // Manager/Admin redirect default
-      if (location.pathname === '/login') {
-        navigate('/');
-      }
+      navigate('/');
     }
   }, [location.pathname, currentUser]);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!loginUser.trim() || !loginPass) {
       toast.warning('Preencha os campos de usuário e senha.');
@@ -190,7 +204,7 @@ function App() {
         localStorage.setItem('superpos_current_user', JSON.stringify(res.user));
         toast.success(`Bem-vindo, ${res.user.username}!`);
         
-        const params = new URLSearchParams(window.location.search);
+        const params = new URLSearchParams(globalThis.location.search);
         const redirectPath = params.get('redirect');
         
         if (redirectPath) {
@@ -217,12 +231,12 @@ function App() {
     navigate('/login');
   };
 
-  const handleOpenCashSession = async (e: React.FormEvent) => {
+  const handleOpenCashSession = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!currentUser) return;
     setCashLoading(true);
     try {
-      const floatVal = parseFloat(initialFloat) || 0.0;
+      const floatVal = Number.parseFloat(initialFloat) || 0.0;
       const session = await api.openCashSession(currentUser.username, floatVal, pdvName);
       setActiveSession(session);
       toast.success('Caixa aberto com sucesso! Bom turno.');
@@ -251,6 +265,14 @@ function App() {
 
   const renderConfirmModal = () => {
     if (!confirmConfig) return null;
+
+    let confirmBtnClass = 'btn-primary';
+    if (confirmConfig.options.type === 'danger') {
+      confirmBtnClass = 'btn-danger';
+    } else if (confirmConfig.options.type === 'warning') {
+      confirmBtnClass = 'btn-warning';
+    }
+
     return (
       <div className="modal-backdrop" style={{ zIndex: 9999 }}>
         <div className="glass-card modal-content animate-slide-up" style={{ maxWidth: '480px' }}>
@@ -276,13 +298,7 @@ function App() {
             </button>
             <button
               type="button"
-              className={`btn py-1.5 px-4 text-xs font-bold ${
-                confirmConfig.options.type === 'danger'
-                  ? 'btn-danger'
-                  : confirmConfig.options.type === 'warning'
-                  ? 'btn-warning'
-                  : 'btn-primary'
-              }`}
+              className={`btn py-1.5 px-4 text-xs font-bold ${confirmBtnClass}`}
               onClick={() => {
                 confirmConfig.resolve(true);
                 setConfirmConfig(null);
@@ -430,7 +446,7 @@ function App() {
             </div>
           ))}
         </div>
-        <POS 
+        <Pos 
           currentUser={currentUser} 
           activeSession={activeSession!} 
           onLogout={handleLogout}
@@ -469,7 +485,7 @@ function App() {
       {/* Sidebar Navigation */}
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <ShoppingCart size={28} color="var(--accent-blue)" />
+          {<ShoppingCart size={38} color="var(--accent-blue)" /> }
           <span>SuperPOS</span>
         </div>
         
@@ -1041,9 +1057,9 @@ function App() {
       <main className="main-content">
         <header className="page-header">
           <div>
-            <h1 className="page-title">Sistema de Ponto de Venda</h1>
+            <h1 className="page-title">Mercado Central</h1>
             <p className="text-muted" style={{ fontSize: '0.9rem', marginTop: '4px' }}>
-              Painel Administrativo da Gerência | Banco SQLite
+              Painel Administrativo 
             </p>
           </div>
 
@@ -1051,7 +1067,7 @@ function App() {
 
         {/* Routes Configuration */}
         <Routes>
-          <Route path="/admin" element={hasPermission('dashboard') ? <Dashboard /> : (currentUser.role === 'cashier' ? <Navigate to="/pos" replace /> : <Navigate to="/" replace />)} />
+          <Route path="/admin" element={getAdminElement()} />
           <Route path="/admin/ai-insights" element={hasPermission('dashboard') ? <AIRecommendations /> : <Navigate to="/admin" replace />} />
           <Route path="/admin/products" element={hasPermission('products') ? <Products /> : <Navigate to="/admin" replace />} />
           <Route path="/admin/products/promotions" element={hasPermission('promotions') ? <Promotions /> : <Navigate to="/admin" replace />} />

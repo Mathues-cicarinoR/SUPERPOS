@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api, type AIRecommendation } from '../services/api';
 import { toast } from '../services/toast';
 import { Sparkles, RefreshCw, TrendingDown, AlertTriangle, Layout, Package, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
@@ -42,7 +42,7 @@ export default function AIRecommendations() {
     setRecomendacoes([]);
   }, [apiKey]);
 
-  const lidarComSalvarKey = (e: React.FormEvent) => {
+  const lidarComSalvarKey = (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     const chaveLimpa = inputKey.trim();
     if (chaveLimpa) {
@@ -116,6 +116,195 @@ export default function AIRecommendations() {
   // Formata valores em reais
   const formatarMoeda = (valor: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
+  };
+
+  const renderConteudoPrincipal = () => {
+    if (!apiKey) {
+      return (
+        <div className="glass-card p-5 text-center flex flex-column items-center justify-center gap-3 mb-4 animate-fade-in" style={{ minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <AlertTriangle size={48} className="text-warning mb-2 animate-pulse" style={{ color: 'var(--warning)' }} />
+          <h3 className="text-xl font-bold text-white mb-2">Chave API Não Conectada</h3>
+          <p className="text-sm text-muted max-w-lg leading-relaxed" style={{ margin: 0 }}>
+            Para gerar recomendações personalizadas com base no estoque real e no histórico de vendas do seu mercado, 
+            insira e salve sua Chave de API do Gemini no painel de configuração acima.
+          </p>
+        </div>
+      );
+    }
+
+    if (carregando) {
+      return (
+        <div className="glass-card flex flex-column items-center justify-center p-5 animate-fade-in" style={{ minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <RefreshCw className="animate-spin text-primary mb-3" size={48} />
+          <h3 className="font-bold text-white mb-2">A inteligência artificial está processando seu inventário</h3>
+          <p className="text-muted text-xs max-w-sm text-center" style={{ margin: 0 }}>
+            Aguarde alguns segundos. Estamos consolidando o fluxo de caixa dos últimos 30 dias e aplicando padrões mercadológicos para gerar insights sob medida.
+          </p>
+        </div>
+      );
+    }
+
+    if (!hasRun) {
+      return (
+        <div className="glass-card p-5 text-center flex flex-column items-center justify-center gap-3 mb-4 animate-fade-in" style={{ minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <Sparkles size={48} className="text-primary mb-2" style={{ color: 'var(--primary)' }} />
+          <h3 className="text-xl font-bold text-white mb-1">Análise Pronta para Iniciar</h3>
+          <p className="text-sm text-muted max-w-lg leading-relaxed mb-3" style={{ margin: 0 }}>
+            Sua chave de API do Gemini está conectada com sucesso. Para evitar o uso acidental e economizar sua cota, 
+            as consultas automáticas foram desativadas. Clique no botão abaixo para iniciar a análise inteligente de estoque e layout agora.
+          </p>
+          <button
+            onClick={carregarDadosIA}
+            disabled={carregando}
+            className="btn btn-primary px-6 py-2.5 text-sm font-semibold flex items-center gap-2"
+            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+          >
+            <Sparkles size={16} />
+            Iniciar Análise de IA
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        {/* Navegação de Abas e Ações de Recarregar */}
+        <div className="flex-between items-center animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          
+          {/* Abas Filtro */}
+          <div className="flex gap-2 p-1 bg-white/5 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.03)', padding: '4px', borderRadius: '8px', display: 'flex' }}>
+            {(['todos', 'queda_vendas', 'parado', 'estoque_baixo', 'layout'] as const).map((filtro) => (
+              <button
+                key={filtro}
+                onClick={() => setFiltroAtivo(filtro)}
+                className="btn text-xs px-4 py-1.5"
+                style={{
+                  textTransform: 'capitalize',
+                  background: filtroAtivo === filtro ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                  color: filtroAtivo === filtro ? '#fff' : 'rgba(255,255,255,0.6)',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: filtroAtivo === filtro ? 'bold' : 'normal',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {obterLabelFiltro(filtro)}
+              </button>
+            ))}
+          </div>
+
+          {/* Botão de Rodar Novamente */}
+          <button
+            onClick={carregarDadosIA}
+            disabled={carregando}
+            className="btn btn-secondary flex items-center gap-2 text-xs py-2 px-4"
+            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+          >
+            <RefreshCw className={carregando ? 'animate-spin' : ''} size={14} />
+            Analisar Novamente
+          </button>
+        </div>
+
+        {/* Conteúdo de Recomendações */}
+        {recomendacoesFiltradas.length === 0 ? (
+          <div className="glass-card flex flex-column items-center justify-center p-5 text-center animate-fade-in" style={{ minHeight: '220px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <Package className="text-muted mb-3" size={40} />
+            <h4 className="text-white font-bold mb-1">Nenhuma recomendação nesta categoria</h4>
+            <p className="text-muted text-xs" style={{ margin: 0 }}>O estoque e as vendas parecem estar saudáveis para os parâmetros filtrados.</p>
+          </div>
+        ) : (
+          <div className="grid-2col-equal animate-fade-in" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(450px, 1fr))', gap: '20px', display: 'grid' }}>
+            {recomendacoesFiltradas.map((rec) => {
+              const statusLabel = obterLabelStatus(rec.status);
+              const statusClass = obterClasseStatus(rec.status);
+
+              return (
+                <div 
+                  key={`${rec.produto_id || 'general'}-${rec.nome_produto}-${rec.status}-${rec.tipo_acao}`} 
+                  className="glass-card p-4 flex flex-column justify-between animate-fade-in"
+                  style={{ 
+                    borderLeft: `4px solid var(--${statusClass})`, 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    justifyContent: 'space-between',
+                    minHeight: '220px',
+                    backgroundColor: 'rgba(255,255,255,0.015)' 
+                  }}
+                >
+                  <div>
+                    {/* Cabeçalho do Card */}
+                    <div className="flex-between items-center mb-3" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div className="flex items-center gap-2">
+                        {obterIconeRecomendacao(rec.status)}
+                        <div>
+                          <h4 className="text-sm font-bold text-white mb-0.5" style={{ margin: 0 }}>
+                            {rec.nome_produto}
+                          </h4>
+                          <span className="text-xs text-muted">{rec.categoria}</span>
+                        </div>
+                      </div>
+                      <span className={`badge ${statusClass} text-xs font-semibold`} style={{ textTransform: 'uppercase', fontSize: '0.65rem' }}>
+                        {statusLabel}
+                      </span>
+                    </div>
+
+                    {/* Título e Descrição do Insight */}
+                    <h5 className="text-sm font-bold text-white mb-2" style={{ margin: '0 0 8px 0', color: 'rgba(255, 255, 255, 0.95)' }}>
+                      {rec.titulo}
+                    </h5>
+                    <p className="text-xs text-muted leading-relaxed" style={{ margin: 0 }}>
+                      {rec.descricao}
+                    </p>
+                  </div>
+
+                  {/* Bloco de Ações e Informações Adicionais */}
+                  <div 
+                    className="flex-between items-center mt-4 pt-3 border-t border-gray-800" 
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      borderTop: '1px solid rgba(255,255,255,0.06)' 
+                    }}
+                  >
+                    <div>
+                      {rec.sugestao_preco && (
+                        <div className="text-xs">
+                          <span className="text-muted">Preço Sugerido: </span>
+                          <strong className="text-green-400 font-bold" style={{ color: '#4ade80' }}>
+                            {formatarMoeda(rec.sugestao_preco)}
+                          </strong>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div>
+                      {rec.tipo_acao === 'promocao' && (
+                        <span className="badge warning text-xs font-bold" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          💡 Sugestão de Promoção
+                        </span>
+                      )}
+                      {rec.tipo_acao === 'layout' && (
+                        <span className="badge success text-xs font-bold" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          🏠 Mudança de Gôndola
+                        </span>
+                      )}
+                      {rec.tipo_acao === 'compra' && (
+                        <span className="badge danger text-xs font-bold" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          🛒 Reposição Necessária
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </>
+    );
   };
 
   return (
@@ -196,180 +385,7 @@ export default function AIRecommendations() {
       </div>
 
       {/* Conteúdo Principal */}
-      {!apiKey ? (
-        <div className="glass-card p-5 text-center flex flex-column items-center justify-center gap-3 mb-4 animate-fade-in" style={{ minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <AlertTriangle size={48} className="text-warning mb-2 animate-pulse" style={{ color: 'var(--warning)' }} />
-          <h3 className="text-xl font-bold text-white mb-2">Chave API Não Conectada</h3>
-          <p className="text-sm text-muted max-w-lg leading-relaxed" style={{ margin: 0 }}>
-            Para gerar recomendações personalizadas com base no estoque real e no histórico de vendas do seu mercado, 
-            insira e salve sua Chave de API do Gemini no painel de configuração acima.
-          </p>
-        </div>
-      ) : carregando ? (
-        <div className="glass-card flex flex-column items-center justify-center p-5 animate-fade-in" style={{ minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <RefreshCw className="animate-spin text-primary mb-3" size={48} />
-          <h3 className="font-bold text-white mb-2">A inteligência artificial está processando seu inventário</h3>
-          <p className="text-muted text-xs max-w-sm text-center" style={{ margin: 0 }}>
-            Aguarde alguns segundos. Estamos consolidando o fluxo de caixa dos últimos 30 dias e aplicando padrões mercadológicos para gerar insights sob medida.
-          </p>
-        </div>
-      ) : !hasRun ? (
-        <div className="glass-card p-5 text-center flex flex-column items-center justify-center gap-3 mb-4 animate-fade-in" style={{ minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <Sparkles size={48} className="text-primary mb-2" style={{ color: 'var(--primary)' }} />
-          <h3 className="text-xl font-bold text-white mb-1">Análise Pronta para Iniciar</h3>
-          <p className="text-sm text-muted max-w-lg leading-relaxed mb-3" style={{ margin: 0 }}>
-            Sua chave de API do Gemini está conectada com sucesso. Para evitar o uso acidental e economizar sua cota, 
-            as consultas automáticas foram desativadas. Clique no botão abaixo para iniciar a análise inteligente de estoque e layout agora.
-          </p>
-          <button
-            onClick={carregarDadosIA}
-            disabled={carregando}
-            className="btn btn-primary px-6 py-2.5 text-sm font-semibold flex items-center gap-2"
-            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-          >
-            <Sparkles size={16} />
-            Iniciar Análise de IA
-          </button>
-        </div>
-      ) : (
-        <>
-          {/* Navegação de Abas e Ações de Recarregar */}
-          <div className="flex-between items-center animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            
-            {/* Abas Filtro */}
-            <div className="flex gap-2 p-1 bg-white/5 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.03)', padding: '4px', borderRadius: '8px', display: 'flex' }}>
-              {(['todos', 'queda_vendas', 'parado', 'estoque_baixo', 'layout'] as const).map((filtro) => (
-                <button
-                  key={filtro}
-                  onClick={() => setFiltroAtivo(filtro)}
-                  className="btn text-xs px-4 py-1.5"
-                  style={{
-                    textTransform: 'capitalize',
-                    background: filtroAtivo === filtro ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
-                    color: filtroAtivo === filtro ? '#fff' : 'rgba(255,255,255,0.6)',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontWeight: filtroAtivo === filtro ? 'bold' : 'normal',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  {obterLabelFiltro(filtro)}
-                </button>
-              ))}
-            </div>
-
-            {/* Botão de Rodar Novamente */}
-            <button
-              onClick={carregarDadosIA}
-              disabled={carregando}
-              className="btn btn-secondary flex items-center gap-2 text-xs py-2 px-4"
-              style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-            >
-              <RefreshCw className={carregando ? 'animate-spin' : ''} size={14} />
-              Analisar Novamente
-            </button>
-          </div>
-
-          {/* Conteúdo de Recomendações */}
-          {recomendacoesFiltradas.length === 0 ? (
-            <div className="glass-card flex flex-column items-center justify-center p-5 text-center animate-fade-in" style={{ minHeight: '220px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-              <Package className="text-muted mb-3" size={40} />
-              <h4 className="text-white font-bold mb-1">Nenhuma recomendação nesta categoria</h4>
-              <p className="text-muted text-xs" style={{ margin: 0 }}>O estoque e as vendas parecem estar saudáveis para os parâmetros filtrados.</p>
-            </div>
-          ) : (
-            <div className="grid-2col-equal animate-fade-in" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(450px, 1fr))', gap: '20px', display: 'grid' }}>
-              {recomendacoesFiltradas.map((rec, index) => {
-                const statusLabel = obterLabelStatus(rec.status);
-                const statusClass = obterClasseStatus(rec.status);
-
-                return (
-                  <div 
-                    key={index} 
-                    className="glass-card p-4 flex flex-column justify-between animate-fade-in"
-                    style={{ 
-                      borderLeft: `4px solid var(--${statusClass})`, 
-                      display: 'flex', 
-                      flexDirection: 'column', 
-                      justifyContent: 'space-between',
-                      minHeight: '220px',
-                      backgroundColor: 'rgba(255,255,255,0.015)' 
-                    }}
-                  >
-                    <div>
-                      {/* Cabeçalho do Card */}
-                      <div className="flex-between items-center mb-3" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div className="flex items-center gap-2">
-                          {obterIconeRecomendacao(rec.status)}
-                          <div>
-                            <h4 className="text-sm font-bold text-white mb-0.5" style={{ margin: 0 }}>
-                              {rec.nome_produto}
-                            </h4>
-                            <span className="text-xs text-muted">{rec.categoria}</span>
-                          </div>
-                        </div>
-                        <span className={`badge ${statusClass} text-xs font-semibold`} style={{ textTransform: 'uppercase', fontSize: '0.65rem' }}>
-                          {statusLabel}
-                        </span>
-                      </div>
-
-                      {/* Título e Descrição do Insight */}
-                      <h5 className="text-sm font-bold text-white mb-2" style={{ margin: '0 0 8px 0', color: 'rgba(255, 255, 255, 0.95)' }}>
-                        {rec.titulo}
-                      </h5>
-                      <p className="text-xs text-muted leading-relaxed" style={{ margin: 0 }}>
-                        {rec.descricao}
-                      </p>
-                    </div>
-
-                    {/* Bloco de Ações e Informações Adicionais */}
-                    <div 
-                      className="flex-between items-center mt-4 pt-3 border-t border-gray-800" 
-                      style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center', 
-                        borderTop: '1px solid rgba(255,255,255,0.06)' 
-                      }}
-                    >
-                      <div>
-                        {rec.sugestao_preco && (
-                          <div className="text-xs">
-                            <span className="text-muted">Preço Sugerido: </span>
-                            <strong className="text-green-400 font-bold" style={{ color: '#4ade80' }}>
-                              {formatarMoeda(rec.sugestao_preco)}
-                            </strong>
-                          </div>
-                        )}
-                      </div>
-                      
-                      <div>
-                        {rec.tipo_acao === 'promocao' && (
-                          <span className="badge warning text-xs font-bold" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                            💡 Sugestão de Promoção
-                          </span>
-                        )}
-                        {rec.tipo_acao === 'layout' && (
-                          <span className="badge success text-xs font-bold" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                            🏠 Mudança de Gôndola
-                          </span>
-                        )}
-                        {rec.tipo_acao === 'compra' && (
-                          <span className="badge danger text-xs font-bold" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                            🛒 Reposição Necessária
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </>
-      )}
+      {renderConteudoPrincipal()}
 
     </div>
   );

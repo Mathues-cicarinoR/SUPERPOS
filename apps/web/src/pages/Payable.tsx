@@ -3,7 +3,7 @@ import { api } from '../services/api';
 import type { Supplier, PayableAccount, RecurringAccount } from '../services/api';
 import { toast } from '../services/toast';
 import { confirmService } from '../services/confirm';
-import { Building2, Landmark, Plus, Trash2, CheckSquare, Square, DollarSign, Users, FileText, Calendar, TrendingUp, AlertCircle, ThumbsUp, Clock, RefreshCw } from 'lucide-react';
+import { Building2, Landmark, Plus, Trash2, CheckSquare, Square, Users, FileText, Calendar, TrendingUp, AlertCircle, ThumbsUp, Clock, RefreshCw } from 'lucide-react';
 
 interface PayableTabProps {
   suppliers: Supplier[];
@@ -324,7 +324,7 @@ function PayableTab({
         <div className="kpi-card" style={{ borderLeft: '4px solid var(--danger)' }}>
           <div className="kpi-header">
             <span className="kpi-title">Total Pendente</span>
-            <DollarSign size={20} className="text-danger" />
+   
           </div>
           <span className="kpi-val text-monospace text-danger">{formatCurrency(pendingAmount)}</span>
           <span className="kpi-trend text-muted text-xs">Contas em aberto com vencimento futuro</span>
@@ -333,7 +333,6 @@ function PayableTab({
         <div className="kpi-card" style={{ borderLeft: '4px solid var(--success)' }}>
           <div className="kpi-header">
             <span className="kpi-title">Total Pago</span>
-            <DollarSign size={20} className="text-success" />
           </div>
           <span className="kpi-val text-monospace text-success">{formatCurrency(paidAmount)}</span>
           <span className="kpi-trend text-muted text-xs">Contas liquidadas no período</span>
@@ -424,8 +423,8 @@ function PayableTab({
 
         {/* Accounts Payable Table */}
         <div className="glass-card">
-          <div className="flex-between mb-4" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="panel-title flex-center gap-2" style={{ margin: 0 }}>
+          <div className="flex-between mb-4" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '20px'}}>
+            <h3 className="panel-title flex-center gap-2" style={{ margin: '0' }}>
               <Landmark size={20} className="text-primary" />
               Listagem de Compromissos Financeiros
             </h3>

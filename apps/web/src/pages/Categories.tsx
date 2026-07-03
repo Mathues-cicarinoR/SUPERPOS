@@ -112,7 +112,7 @@ export default function Categories() {
     <div className="grid-2col-equal">
       {/* Coluna 1: Categorias Principais */}
       <div className="glass-card" style={{ gap: '10px', display: 'flex', flexDirection: 'column' }}>
-        <h3 className="card-title text-lg border-b border-gray-800 pb-2 mb-3">1. Categorias Principais</h3>
+        <h3 className="card-title text-lg border-b border-gray-800 pb-2 mb-3" style={{ paddingBottom: '15px' }}>1. Categorias Principais</h3>
 
         <form onSubmit={handleCreateCategory} className="flex gap-2 mb-4">
           <input
@@ -166,7 +166,7 @@ export default function Categories() {
 
       {/* Coluna 2: Subcategorias */}
       <div className="glass-card" style={{ gap: '10px', display: 'flex', flexDirection: 'column' }}>
-        <h3 className="card-title text-lg border-b border-gray-800 pb-2 mb-3">2. Subcategorias</h3>
+        <h3 className="card-title text-lg border-b border-gray-800 pb-2 mb-3" style={{ paddingBottom: '15px' }}>2. Subcategorias</h3>
 
         <form onSubmit={handleCreateSubcategory} className="flex flex-column gap-2 mb-4">
           <div className="flex gap-2">

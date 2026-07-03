@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../services/api';
 import type { CashSession, Sale, Terminal } from '../services/api';
 import { toast } from '../services/toast';
@@ -428,16 +429,13 @@ export default function CashFlow({ activeTab: propActiveTab = 'sessions' }: Cash
   const discrepancy = reportedCashClosed - expectedCashClosed;
 
   let discrepancyMessage = 'Caixas batendo perfeitamente';
-  let discrepancyColorClass = 'text-muted';
   let discrepancyValueColorClass = '';
 
   if (discrepancy < 0) {
     discrepancyMessage = 'Faltando dinheiro no fechamento';
-    discrepancyColorClass = 'text-danger';
     discrepancyValueColorClass = 'text-danger';
   } else if (discrepancy > 0) {
     discrepancyMessage = 'Sobra de caixa identificada';
-    discrepancyColorClass = 'text-success';
     discrepancyValueColorClass = 'text-success';
   }
 
@@ -505,20 +503,20 @@ export default function CashFlow({ activeTab: propActiveTab = 'sessions' }: Cash
                       {s.status === 'open' ? 'Aberto' : 'Fechado'}
                     </span>
                   </td>
-                  <td className="text-xs text-monospace">{new Date(s.opened_at).toLocaleString('pt-BR')}</td>
-                  <td className="text-xs text-monospace">
+                  <td className="text-xs text-monospace" style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace' }}>{new Date(s.opened_at).toLocaleString('pt-BR')}</td>
+                  <td className="text-xs text-monospace" style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace' }}>
                     {s.closed_at ? new Date(s.closed_at).toLocaleString('pt-BR') : '-'}
                   </td>
-                  <td className="text-right text-monospace">{formatCurrency(s.initial_float)}</td>
-                  <td className="text-right text-monospace text-success">+{formatCurrency(s.sales_cash)}</td>
-                  <td className="text-right text-monospace font-semibold">{formatCurrency(expected)}</td>
-                  <td className="text-right text-monospace font-semibold">
+                  <td className="text-right text-monospace"  style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace' }}>{formatCurrency(s.initial_float)}</td>
+                  <td className="text-right text-monospace text-success"  style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace' }}>+{formatCurrency(s.sales_cash)}</td>
+                  <td className="text-right text-monospace font-semibold"  style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace' }}>{formatCurrency(expected)}</td>
+                  <td className="text-right text-monospace font-semibold"  style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace' }}>
                     {reported === null ? '-' : formatCurrency(reported)}
                   </td>
-                  <td className="text-right text-monospace font-semibold text-info">
+                  <td className="text-right text-monospace font-semibold text-info" style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace' }}>
                     {cardReported === null ? '-' : formatCurrency(cardReported)}
                   </td>
-                  <td className="text-right text-monospace font-bold">
+                  <td className="text-right text-monospace font-bold"  style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace' }}>
                     {diff === null ? (
                       <span className="text-muted">-</span>
                     ) : (
@@ -557,11 +555,11 @@ export default function CashFlow({ activeTab: propActiveTab = 'sessions' }: Cash
               <th>Data/Hora</th>
               <th>Cliente</th>
               <th className="text-center">Forma Pagamento</th>
-              <th className="text-right">Total Geral</th>
-              <th className="text-right">Desconto</th>
-              <th className="text-right">Valor Final</th>
-              <th className="text-right">Taxa Cartão</th>
-              <th className="text-right">Líquido Venda</th>
+              <th className="text-center">Total Geral</th>
+              <th className="text-center">Desconto</th>
+              <th className="text-center">Valor Final</th>
+              <th className="text-center">Taxa Cartão</th>
+              <th className="text-center">Líquido Venda</th>
               <th className="text-center" style={{ width: '100px' }}>Detalhes</th>
             </tr>
           </thead>
@@ -576,11 +574,11 @@ export default function CashFlow({ activeTab: propActiveTab = 'sessions' }: Cash
                   </td>
                   <td className="font-semibold">{sale.customer_name || 'Consumidor Final'}</td>
                   <td className="text-center">{getPaymentMethodBadge(sale.payment_method)}</td>
-                  <td className="text-right text-monospace text-muted">{formatCurrency(sale.total_amount)}</td>
-                  <td className="text-right text-monospace text-danger">-{formatCurrency(sale.discount)}</td>
-                  <td className="text-right text-monospace font-bold text-white">{formatCurrency(sale.final_amount)}</td>
-                  <td className="text-right text-monospace text-danger">-{formatCurrency(sale.fee_amount || 0)}</td>
-                  <td className="text-right text-monospace font-bold text-success">{formatCurrency(net)}</td>
+                  <td className="text-center text-monospace text-muted">{formatCurrency(sale.total_amount)}</td>
+                  <td className="text-center text-monospace text-danger">-{formatCurrency(sale.discount)}</td>
+                  <td className="text-center text-monospace font-bold text-white">{formatCurrency(sale.final_amount)}</td>
+                  <td className="text-center text-monospace text-danger">-{formatCurrency(sale.fee_amount || 0)}</td>
+                  <td className="text-center text-monospace font-bold text-success">{formatCurrency(net)}</td>
                   <td className="text-center">
                     <button
                       type="button"
@@ -701,16 +699,14 @@ export default function CashFlow({ activeTab: propActiveTab = 'sessions' }: Cash
             <div className="kpi-card">
               <div className="kpi-header">
                 <span className="kpi-title">Fundo de Entrada Total</span>
-                <CircleDollarSign size={20} className="text-primary" />
               </div>
               <span className="kpi-val text-monospace">{formatCurrency(totalOpeningFloat)}</span>
               <span className="kpi-trend text-muted text-xs">Total investido na abertura de gavetas</span>
             </div>
 
             <div className="kpi-card">
-              <div className="kpi-header">
+              <div className="kpi-header"  >
                 <span className="kpi-title">Vendas em Dinheiro</span>
-                <CircleDollarSign size={20} className="text-success" />
               </div>
               <span className="kpi-val text-monospace text-success">{formatCurrency(totalSalesCash)}</span>
               <span className="kpi-trend text-muted text-xs">Apenas faturamento em espécie</span>
@@ -719,7 +715,6 @@ export default function CashFlow({ activeTab: propActiveTab = 'sessions' }: Cash
             <div className="kpi-card">
               <div className="kpi-header">
                 <span className="kpi-title">Total Fechado (Informado)</span>
-                <CircleDollarSign size={20} className="text-primary" />
               </div>
               <span className="kpi-val text-monospace">{formatCurrency(reportedCashClosed)}</span>
               <span className="kpi-trend text-muted text-xs">Valores físicos recolhidos ao fim do turno</span>
@@ -728,7 +723,6 @@ export default function CashFlow({ activeTab: propActiveTab = 'sessions' }: Cash
             <div className="kpi-card">
               <div className="kpi-header">
                 <span className="kpi-title">Diferença / Quebra</span>
-                <CircleDollarSign size={20} className={discrepancyColorClass} />
               </div>
               <span className={`kpi-val text-monospace ${discrepancyValueColorClass}`}>
                 {discrepancy > 0 ? '+' : ''}{formatCurrency(discrepancy)}
@@ -778,7 +772,7 @@ export default function CashFlow({ activeTab: propActiveTab = 'sessions' }: Cash
                 placeholder="Buscar por ID, cliente ou pagamento..."
                 value={salesSearch}
                 onChange={(e) => setSalesSearch(e.target.value)}
-                className="input-field search-input"
+                  className="input-field search-input"
                 style={{ padding: '6px 12px 6px 36px', fontSize: '0.85rem' }}
               />
             </div>
@@ -789,7 +783,6 @@ export default function CashFlow({ activeTab: propActiveTab = 'sessions' }: Cash
             <div className="kpi-card">
               <div className="kpi-header">
                 <span className="kpi-title">Faturamento Bruto</span>
-                <CircleDollarSign size={20} className="text-primary" />
               </div>
               <span className="kpi-val text-monospace">{formatCurrency(totalSalesGross)}</span>
               <span className="kpi-trend text-muted text-xs">Total pago pelos clientes no PDV</span>
@@ -798,7 +791,6 @@ export default function CashFlow({ activeTab: propActiveTab = 'sessions' }: Cash
             <div className="kpi-card">
               <div className="kpi-header">
                 <span className="kpi-title">Taxas Estimadas (Maquinetas)</span>
-                <CircleDollarSign size={20} className="text-danger" />
               </div>
               <span className="kpi-val text-monospace text-danger">-{formatCurrency(totalSalesFees)}</span>
               <span className="kpi-trend text-muted text-xs">Descontos administrativos de cartões/Pix</span>
@@ -807,7 +799,6 @@ export default function CashFlow({ activeTab: propActiveTab = 'sessions' }: Cash
             <div className="kpi-card">
               <div className="kpi-header">
                 <span className="kpi-title">Faturamento Líquido</span>
-                <CircleDollarSign size={20} className="text-success" />
               </div>
               <span className="kpi-val text-monospace text-success">{formatCurrency(totalSalesNet)}</span>
               <span className="kpi-trend text-muted text-xs">Faturamento real depositado na conta</span>
@@ -884,10 +875,10 @@ export default function CashFlow({ activeTab: propActiveTab = 'sessions' }: Cash
       )}
 
       {/* SALE TRANSACTION DETAILS MODAL */}
-      {selectedSale && (
+      {selectedSale && createPortal(
         <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="modal-content glass-card animate-scale-in" style={{ maxWidth: '600px', width: '90%', padding: '24px' }}>
-            <div className="flex-between mb-4 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <div className="flex-between mb-4 pb-2" style={{ borderBottom: '1px solid var(--border)', marginBottom: '20px' }}>
               <h3 className="text-lg font-bold flex-center gap-2">
                 <FileText size={20} className="text-primary" />
                 Detalhes da Venda #{selectedSale.id}
@@ -902,7 +893,7 @@ export default function CashFlow({ activeTab: propActiveTab = 'sessions' }: Cash
               </button>
             </div>
 
-            <div className="flex flex-col gap-4 mb-4">
+            <div className="flex flex-col gap-4 mb-4"  style={{ marginBottom: '10px', marginTop: '10px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }} className="text-sm">
                 <div>
                   <span className="block text-xs text-muted uppercase font-bold">Cliente</span>
@@ -969,7 +960,8 @@ export default function CashFlow({ activeTab: propActiveTab = 'sessions' }: Cash
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

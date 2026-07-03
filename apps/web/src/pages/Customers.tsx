@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api, type Customer } from '../services/api';
 import { toast } from '../services/toast';
 import { confirmService } from '../services/confirm';
@@ -323,9 +324,9 @@ export default function Customers() {
       {renderCustomersContent()}
 
       {/* CRUD Modal */}
-      {isModalOpen && (
-        <div className="modal-backdrop">
-          <div className="glass-card modal-content animate-slide-up">
+      {isModalOpen && createPortal(
+        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="glass-card modal-content animate-slide-up" style={{ maxWidth: '600px', width: '95%', padding: '24px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', top: 'auto', left: 'auto', transform: 'none' }}>
             <div className="modal-header">
               <h3>{editingCustomer ? 'Editar Cadastro de Cliente' : 'Cadastrar Novo Cliente'}</h3>
               <button className="btn-icon" onClick={() => setIsModalOpen(false)}>
@@ -411,13 +412,14 @@ export default function Customers() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Pay Debt Modal */}
-      {isPayModalOpen && selectedCustomerForPayment && (
-        <div className="modal-backdrop">
-          <div className="glass-card modal-content modal-sm animate-slide-up">
+      {isPayModalOpen && selectedCustomerForPayment && createPortal(
+        <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="glass-card modal-content modal-sm animate-slide-up" style={{ maxWidth: '400px', width: '95%', padding: '24px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', top: 'auto', left: 'auto', transform: 'none' }}>
             <div className="modal-header">
               <h3>Abater Dívida - Fiado</h3>
               <button className="btn-icon" onClick={() => setIsPayModalOpen(false)}>
@@ -466,7 +468,8 @@ export default function Customers() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

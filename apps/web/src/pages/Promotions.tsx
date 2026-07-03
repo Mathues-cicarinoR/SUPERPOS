@@ -36,11 +36,15 @@ export default function Promotions() {
   // Product Search in Modal
   const [modalProductSearch, setModalProductSearch] = useState('');
 
-  // Fetch promotions and products on mount
+  // Busca as promoções e produtos disponíveis na inicialização do componente
   useEffect(() => {
     fetchData();
   }, []);
 
+  /**
+   * Busca de forma concorrente a lista de promoções cadastradas e
+   * a lista de produtos ativos do mercado para preencher o formulário.
+   */
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -58,14 +62,20 @@ export default function Promotions() {
     }
   };
 
-  // Helper to get local date ISO string for inputs (YYYY-MM-DDTHH:MM)
+  /**
+   * Utilitário para formatar datas no padrão ISO string (YYYY-MM-DDTHH:MM)
+   * ajustando a diferença de fuso horário local para compatibilidade com inputs.
+   */
   const formatLocalDate = (date: Date = new Date()) => {
     return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
       .toISOString()
       .slice(0, 16);
   };
 
-  // Open modal for creation
+  /**
+   * Inicializa os estados do formulário com valores limpos/padrão
+   * e abre o modal de criação de novas promoções.
+   */
   const handleOpenCreateModal = () => {
     setEditingPromotion(null);
     setName('');
@@ -73,7 +83,7 @@ export default function Promotions() {
     setDiscountType('percentage');
     setDiscountValue(0);
     setStartDate(formatLocalDate());
-    // Default end date is tomorrow
+    // Define a data de fim padrão como o dia de amanhã
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     setEndDate(formatLocalDate(tomorrow));
@@ -82,7 +92,10 @@ export default function Promotions() {
     setIsModalOpen(true);
   };
 
-  // Open modal for editing
+  /**
+   * Carrega os dados de uma promoção existente e abre o modal para edição.
+   * Converte a associação de produtos vinculados aos estados de desconto individual do formulário.
+   */
   const handleOpenEditModal = (promo: Promotion) => {
     setEditingPromotion(promo);
     setName(promo.name);
@@ -108,9 +121,11 @@ export default function Promotions() {
     setIsModalOpen(true);
   };
 
-  // Delete promotion
+  /**
+   * Solicita confirmação e apaga permanentemente uma promoção cadastrada na base.
+   */
   const handleDelete = async (id: number) => {
-    if (!window.confirm('Tem certeza de que deseja excluir esta promoção relâmpago?')) return;
+    if (!globalThis.confirm('Tem certeza de que deseja excluir esta promoção relâmpago?')) return;
     
     try {
       await api.deletePromotion(id, 'Gerente');
@@ -121,50 +136,69 @@ export default function Promotions() {
     }
   };
 
-  // Handle Form Submit
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!name.trim()) {
-      toast.warning('O nome da promoção é obrigatório.');
-      return;
-    }
-
-    if (discountValue <= 0) {
-      toast.warning('O valor do desconto deve ser maior que zero.');
-      return;
-    }
-
-    if (discountType === 'percentage' && discountValue > 100) {
-      toast.warning('O desconto percentual não pode ser maior que 100%.');
-      return;
-    }
-
-    if (new Date(startDate) >= new Date(endDate)) {
-      toast.warning('A data inicial deve ser anterior à data final.');
-      return;
-    }
-
-    if (selectedProductIds.length === 0) {
-      toast.warning('Selecione pelo menos um produto para esta promoção.');
-      return;
-    }
-
-    // Individual item validation
+  /**
+   * Valida as configurações de desconto individual de cada produto vinculado.
+   * Retorna true se todas as regras forem válidas, ou false caso contrário (com aviso correspondente).
+   */
+  const validarProdutosVinculados = (): boolean => {
     for (const item of selectedProducts) {
       if (item.discount_type !== null) {
         if (item.discount_value === null || item.discount_value <= 0) {
           const prod = products.find(p => p.id === item.product_id);
           toast.warning(`Insira um valor de desconto válido para o produto: ${prod?.name || item.product_id}`);
-          return;
+          return false;
         }
         if (item.discount_type === 'percentage' && item.discount_value > 100) {
           const prod = products.find(p => p.id === item.product_id);
           toast.warning(`Desconto percentual não pode exceder 100% para o produto: ${prod?.name || item.product_id}`);
-          return;
+          return false;
         }
       }
     }
+    return true;
+  };
+
+  /**
+   * Valida o preenchimento correto de todos os campos principais da promoção.
+   * Verifica obrigatoriedade de campos, valores limites e coerência de datas.
+   */
+  const validarFormulario = (): boolean => {
+    if (!name.trim()) {
+      toast.warning('O nome da promoção é obrigatório.');
+      return false;
+    }
+
+    if (discountValue <= 0) {
+      toast.warning('O valor do desconto deve ser maior que zero.');
+      return false;
+    }
+
+    if (discountType === 'percentage' && discountValue > 100) {
+      toast.warning('O desconto percentual não pode ser maior que 100%.');
+      return false;
+    }
+
+    if (new Date(startDate) >= new Date(endDate)) {
+      toast.warning('A data inicial deve ser anterior à data final.');
+      return false;
+    }
+
+    if (selectedProductIds.length === 0) {
+      toast.warning('Selecione pelo menos um produto para esta promoção.');
+      return false;
+    }
+
+    return validarProdutosVinculados();
+  };
+
+  /**
+   * Processa o envio do formulário, disparando a chamada adequada
+   * (criação ou edição) para a API do backend.
+   */
+  const handleSubmit = async (e: React.SyntheticEvent) => {
+    e.preventDefault();
+    
+    if (!validarFormulario()) return;
 
     const payload = {
       name,
@@ -175,12 +209,12 @@ export default function Promotions() {
       end_date: endDate,
       product_ids: selectedProductIds,
       products: selectedProducts,
-      operator_name: 'Gerente', // Default fallback
+      operator_name: 'Gerente', // Operador responsável padrão
       status: editingPromotion ? editingPromotion.status : 'active' as const
     };
 
     try {
-      if (editingPromotion && editingPromotion.id) {
+      if (editingPromotion?.id) {
         await api.updatePromotion(editingPromotion.id, payload);
         toast.success('Promoção atualizada com sucesso.');
       } else {
@@ -194,7 +228,9 @@ export default function Promotions() {
     }
   };
 
-  // Toggle product selection in modal
+  /**
+   * Alterna a seleção de um produto individual na listagem de vinculação.
+   */
   const handleToggleProduct = (prodId: number) => {
     setSelectedProducts(prev => {
       const exists = prev.find(p => p.product_id === prodId);
@@ -206,24 +242,64 @@ export default function Promotions() {
     });
   };
 
-  const handleSelectAllFiltered = (filteredIds: number[]) => {
-    setSelectedProducts(prev => {
-      const allSelected = filteredIds.every(id => prev.some(p => p.product_id === id));
-      if (allSelected) {
-        return prev.filter(p => !filteredIds.includes(p.product_id));
-      } else {
-        const newItems = [...prev];
-        filteredIds.forEach(id => {
-          if (!newItems.some(p => p.product_id === id)) {
-            newItems.push({ product_id: id, discount_type: null, discount_value: null });
-          }
-        });
-        return newItems;
+  /**
+   * Atualiza o tipo de desconto individual configurado para um produto específico.
+   */
+  const handleUpdateProductDiscountType = (productId: number, val: string) => {
+    setSelectedProducts(prev => prev.map(p => {
+      if (p.product_id === productId) {
+        return {
+          ...p,
+          discount_type: val === 'default' ? null : val as any,
+          discount_value: val === 'default' ? null : (p.discount_value || 0)
+        };
       }
-    });
+      return p;
+    }));
   };
 
-  // Helper to determine status and colors
+  /**
+   * Atualiza o valor de desconto individual configurado para um produto específico.
+   */
+  const handleUpdateProductDiscountValue = (productId: number, val: number | null) => {
+    setSelectedProducts(prev => prev.map(p => {
+      if (p.product_id === productId) {
+        return { ...p, discount_value: val };
+      }
+      return p;
+    }));
+  };
+
+  /**
+   * Marca ou desmarca todos os produtos visíveis de acordo com a pesquisa no modal.
+   */
+  const handleSelectAllFiltered = (filteredIds: number[]) => {
+    const allSelected = filteredIds.every(id => selectedProductIds.includes(id));
+    if (allSelected) {
+      setSelectedProducts(prev => prev.filter(p => !filteredIds.includes(p.product_id)));
+    } else {
+      const itemsToAdd: Array<{
+        product_id: number;
+        discount_type: 'percentage' | 'fixed_price' | 'fixed_discount' | null;
+        discount_value: number | null;
+      }> = [];
+
+      for (const id of filteredIds) {
+        if (!selectedProductIds.includes(id)) {
+          itemsToAdd.push({ product_id: id, discount_type: null, discount_value: null });
+        }
+      }
+
+      if (itemsToAdd.length > 0) {
+        setSelectedProducts(prev => [...prev, ...itemsToAdd]);
+      }
+    }
+  };
+
+  /**
+   * Calcula o estado operacional de uma promoção (Ativa, Agendada, Expirada ou Inativa)
+   * e retorna estilos correspondentes (cores de fundo, texto e indicador visual).
+   */
   const getPromoState = (promo: Promotion) => {
     if (promo.status === 'inactive') {
       return { label: 'Inativa', color: 'rgba(239, 68, 68, 0.2)', textColor: '#f87171', indicator: 'red' };
@@ -248,7 +324,7 @@ export default function Promotions() {
   const filteredPromotions = useMemo(() => {
     return promotions.filter(promo => {
       const matchesSearch = promo.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        (promo.description && promo.description.toLowerCase().includes(searchTerm.toLowerCase()));
+        promo.description?.toLowerCase().includes(searchTerm.toLowerCase());
       
       if (!matchesSearch) return false;
 
@@ -268,7 +344,7 @@ export default function Promotions() {
     return products.filter(p => 
       p.name.toLowerCase().includes(modalProductSearch.toLowerCase()) ||
       p.barcode.includes(modalProductSearch) ||
-      (p.category && p.category.toLowerCase().includes(modalProductSearch.toLowerCase()))
+      p.category?.toLowerCase().includes(modalProductSearch.toLowerCase())
     );
   }, [products, modalProductSearch]);
 
@@ -276,7 +352,7 @@ export default function Promotions() {
   const getProgressPercentage = (start: string, end: string) => {
     const startTime = new Date(start).getTime();
     const endTime = new Date(end).getTime();
-    const nowTime = new Date().getTime();
+    const nowTime = Date.now();
 
     if (nowTime < startTime) return 0;
     if (nowTime > endTime) return 100;
@@ -298,8 +374,137 @@ export default function Promotions() {
       toast.success(`Promoção ${newStatus === 'active' ? 'ativada' : 'desativada'} com sucesso.`);
       fetchData();
     } catch (err: any) {
-      toast.error('Erro ao atualizar status.');
+      toast.error(err.message || 'Erro ao atualizar status.');
     }
+  };
+
+  const renderPromotionsContent = () => {
+    if (loading) {
+      return (
+        <div className="text-center py-5">
+          <Clock className="animate-spin text-muted mb-2" size={32} />
+          <p className="text-muted">Carregando promoções...</p>
+        </div>
+      );
+    }
+
+    if (filteredPromotions.length === 0) {
+      return (
+        <div className="glass-card text-center py-5" style={{ background: 'rgba(255,255,255,0.01)' }}>
+          <AlertCircle size={48} className="text-muted opacity-30 mb-2" style={{ margin: '0 auto' }} />
+          <p className="text-muted">Nenhuma promoção encontrada.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="promo-grid">
+        {filteredPromotions.map((promo) => {
+          const state = getPromoState(promo);
+          const progress = getProgressPercentage(promo.start_date, promo.end_date);
+          const totalProducts = promo.product_ids?.length || 0;
+
+          return (
+            <div key={promo.id} className="promo-card">
+              <Flame className="promo-card-flame" size={80} />
+              
+              <div>
+                <div className="flex-between align-center">
+                  <span 
+                    className="promo-card-badge" 
+                    style={{ backgroundColor: state.color, color: state.textColor }}
+                  >
+                    {state.label}
+                  </span>
+                  
+                  <label className="switch" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0 }}>
+                    <input 
+                      type="checkbox" 
+                      checked={promo.status === 'active'} 
+                      onChange={() => handleToggleStatus(promo)}
+                      style={{ width: '32px', height: '16px' }}
+                    />
+                    <span className="text-[10px] text-muted font-bold uppercase">{promo.status === 'active' ? 'Ativo' : 'Inativo'}</span>
+                  </label>
+                </div>
+
+                <h3 className="font-bold text-lg mt-3 text-ellipsis overflow-hidden" title={promo.name}>
+                  {promo.name}
+                </h3>
+                
+                {promo.description && (
+                  <p className="text-muted text-xs mt-1 text-ellipsis overflow-hidden" style={{ minHeight: '32px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    {promo.description}
+                  </p>
+                )}
+
+                {/* Discount info */}
+                <div className="promo-discount-tag">
+                  {promo.discount_type === 'percentage' && `${promo.discount_value}% OFF`}
+                  {promo.discount_type === 'fixed_price' && `${formatCurrency(promo.discount_value)}`}
+                  {promo.discount_type === 'fixed_discount' && `-${formatCurrency(promo.discount_value)}`}
+                </div>
+
+                {/* Discount details description */}
+                <div className="text-[11px] text-muted font-semibold mt-1 flex items-center gap-1.5" style={{gap: '10px'}
+              }>
+                  <Sparkles size={20} className="text-warning"  />
+                  <span>
+                    {promo.discount_type === 'percentage' && 'Desconto percentual aplicado na venda'}
+                    {promo.discount_type === 'fixed_price' && 'Preço fixado sobre o produto'}
+                    {promo.discount_type === 'fixed_discount' && 'Valor fixo descontado do original'}
+                  </span>
+                </div>
+
+                {/* Validity Info */}
+                <div style={{ marginTop: '16px' }}>
+                  <div className="promo-date-row">
+                    <Calendar size={12} />
+                    <span>Início: {new Date(promo.start_date).toLocaleString('pt-BR')}</span>
+                  </div>
+                  <div className="promo-date-row">
+                    <Clock size={12} />
+                    <span>Fim: {new Date(promo.end_date).toLocaleString('pt-BR')}</span>
+                  </div>
+                  
+                  {state.label === 'Ativa' && (
+                    <div className="promo-progress-container">
+                      <div className="promo-progress-bar" style={{ width: `${progress}%` }}></div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex-between align-center text-xs mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
+                  <span className="text-muted flex-center gap-1">
+                    <Package size={14} />
+                    {totalProducts} {totalProducts === 1 ? 'produto vinculado' : 'produtos vinculados'}
+                  </span>
+                </div>
+
+                <div className="promo-card-actions">
+                  <button 
+                    className="btn btn-secondary py-1.5 flex-1 flex-center gap-1 text-xs" 
+                    onClick={() => handleOpenEditModal(promo)}
+                  >
+                    <Edit2 size={12} />
+                    Editar
+                  </button>
+                  <button 
+                    className="btn btn-danger py-1.5 flex-1 flex-center gap-1 text-xs" 
+                    onClick={() => handleDelete(promo.id!)}
+                  >
+                    <Trash2 size={12} />
+                    Excluir
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   return (
@@ -646,123 +851,7 @@ export default function Promotions() {
       </div>
 
       {/* Content Grid */}
-      {loading ? (
-        <div className="text-center py-5">
-          <Clock className="animate-spin text-muted mb-2" size={32} />
-          <p className="text-muted">Carregando promoções...</p>
-        </div>
-      ) : filteredPromotions.length === 0 ? (
-        <div className="glass-card text-center py-5" style={{ background: 'rgba(255,255,255,0.01)' }}>
-          <AlertCircle size={48} className="text-muted opacity-30 mb-2" style={{ margin: '0 auto' }} />
-          <p className="text-muted">Nenhuma promoção encontrada.</p>
-        </div>
-      ) : (
-        <div className="promo-grid">
-          {filteredPromotions.map((promo) => {
-            const state = getPromoState(promo);
-            const progress = getProgressPercentage(promo.start_date, promo.end_date);
-            const totalProducts = promo.product_ids?.length || 0;
-
-            return (
-              <div key={promo.id} className="promo-card">
-                <Flame className="promo-card-flame" size={80} />
-                
-                <div>
-                  <div className="flex-between align-center">
-                    <span 
-                      className="promo-card-badge" 
-                      style={{ backgroundColor: state.color, color: state.textColor }}
-                    >
-                      {state.label}
-                    </span>
-                    
-                    <label className="switch" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0 }}>
-                      <input 
-                        type="checkbox" 
-                        checked={promo.status === 'active'} 
-                        onChange={() => handleToggleStatus(promo)}
-                        style={{ width: '32px', height: '16px' }}
-                      />
-                      <span className="text-[10px] text-muted font-bold uppercase">{promo.status === 'active' ? 'Ativo' : 'Inativo'}</span>
-                    </label>
-                  </div>
-
-                  <h3 className="font-bold text-lg mt-3 text-ellipsis overflow-hidden" title={promo.name}>
-                    {promo.name}
-                  </h3>
-                  
-                  {promo.description && (
-                    <p className="text-muted text-xs mt-1 text-ellipsis overflow-hidden" style={{ minHeight: '32px', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                      {promo.description}
-                    </p>
-                  )}
-
-                  {/* Discount info */}
-                  <div className="promo-discount-tag">
-                    {promo.discount_type === 'percentage' && `${promo.discount_value}% OFF`}
-                    {promo.discount_type === 'fixed_price' && `${formatCurrency(promo.discount_value)}`}
-                    {promo.discount_type === 'fixed_discount' && `-${formatCurrency(promo.discount_value)}`}
-                  </div>
-
-                  {/* Discount details description */}
-                  <div className="text-[11px] text-muted font-semibold mt-1 flex items-center gap-1.5">
-                    <Sparkles size={12} className="text-warning" />
-                    <span>
-                      {promo.discount_type === 'percentage' && 'Desconto percentual aplicado na venda'}
-                      {promo.discount_type === 'fixed_price' && 'Preço fixado sobre o produto'}
-                      {promo.discount_type === 'fixed_discount' && 'Valor fixo descontado do original'}
-                    </span>
-                  </div>
-
-                  {/* Validity Info */}
-                  <div style={{ marginTop: '16px' }}>
-                    <div className="promo-date-row">
-                      <Calendar size={12} />
-                      <span>Início: {new Date(promo.start_date).toLocaleString('pt-BR')}</span>
-                    </div>
-                    <div className="promo-date-row">
-                      <Clock size={12} />
-                      <span>Fim: {new Date(promo.end_date).toLocaleString('pt-BR')}</span>
-                    </div>
-                    
-                    {state.label === 'Ativa' && (
-                      <div className="promo-progress-container">
-                        <div className="promo-progress-bar" style={{ width: `${progress}%` }}></div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex-between align-center text-xs mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
-                    <span className="text-muted flex-center gap-1">
-                      <Package size={14} />
-                      {totalProducts} {totalProducts === 1 ? 'produto vinculado' : 'produtos vinculados'}
-                    </span>
-                  </div>
-
-                  <div className="promo-card-actions">
-                    <button 
-                      className="btn btn-secondary py-1.5 flex-1 flex-center gap-1 text-xs" 
-                      onClick={() => handleOpenEditModal(promo)}
-                    >
-                      <Edit2 size={12} />
-                      Editar
-                    </button>
-                    <button 
-                      className="btn btn-danger py-1.5 flex-1 flex-center gap-1 text-xs" 
-                      onClick={() => handleDelete(promo.id!)}
-                    >
-                      <Trash2 size={12} />
-                      Excluir
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {renderPromotionsContent()}
 
       {/* CREATE / EDIT MODAL */}
       {isModalOpen && (
@@ -786,8 +875,9 @@ export default function Promotions() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   
                   <div className="form-group">
-                    <label className="block text-xs font-bold uppercase mb-1 text-muted">Nome da Promoção</label>
+                    <label htmlFor="promo-name" className="block text-xs font-bold uppercase mb-1 text-muted">Nome da Promoção</label>
                     <input 
+                      id="promo-name"
                       type="text" 
                       value={name}
                       onChange={(e) => setName(e.target.value)}
@@ -798,8 +888,9 @@ export default function Promotions() {
                   </div>
 
                   <div className="form-group">
-                    <label className="block text-xs font-bold uppercase mb-1 text-muted">Descrição (Opcional)</label>
+                    <label htmlFor="promo-description" className="block text-xs font-bold uppercase mb-1 text-muted">Descrição (Opcional)</label>
                     <textarea 
+                      id="promo-description"
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       placeholder="Descreva detalhes ou metas da promoção..."
@@ -811,8 +902,9 @@ export default function Promotions() {
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '12px' }}>
                     <div className="form-group">
-                      <label className="block text-xs font-bold uppercase mb-1 text-muted">Tipo de Desconto</label>
+                      <label htmlFor="promo-discount-type" className="block text-xs font-bold uppercase mb-1 text-muted">Tipo de Desconto</label>
                       <select 
+                        id="promo-discount-type"
                         value={discountType}
                         onChange={(e) => setDiscountType(e.target.value as any)}
                         className="input-field select-field"
@@ -824,15 +916,16 @@ export default function Promotions() {
                     </div>
 
                     <div className="form-group">
-                      <label className="block text-xs font-bold uppercase mb-1 text-muted">
+                      <label htmlFor="promo-discount-value" className="block text-xs font-bold uppercase mb-1 text-muted">
                         {discountType === 'percentage' ? 'Valor (%)' : 'Valor (R$)'}
                       </label>
                       <input 
+                        id="promo-discount-value"
                         type="number" 
                         step="0.01"
                         min="0.01"
                         value={discountValue || ''}
-                        onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
+                        onChange={(e) => setDiscountValue(Number.parseFloat(e.target.value) || 0)}
                         placeholder="0.00"
                         className="input-field text-right font-bold text-monospace"
                         required
@@ -841,8 +934,9 @@ export default function Promotions() {
                   </div>
 
                   <div className="form-group">
-                    <label className="block text-xs font-bold uppercase mb-1 text-muted">Data & Hora de Início</label>
+                    <label htmlFor="promo-start-date" className="block text-xs font-bold uppercase mb-1 text-muted">Data & Hora de Início</label>
                     <input 
+                      id="promo-start-date"
                       type="datetime-local" 
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
@@ -852,8 +946,9 @@ export default function Promotions() {
                   </div>
 
                   <div className="form-group">
-                    <label className="block text-xs font-bold uppercase mb-1 text-muted">Data & Hora de Fim</label>
+                    <label htmlFor="promo-end-date" className="block text-xs font-bold uppercase mb-1 text-muted">Data & Hora de Fim</label>
                     <input 
+                      id="promo-end-date"
                       type="datetime-local" 
                       value={endDate}
                       onChange={(e) => setEndDate(e.target.value)}
@@ -905,89 +1000,77 @@ export default function Promotions() {
                             <div 
                               key={prod.id}
                               className={`product-selector-item ${isSelected ? 'selected' : ''}`}
-                              style={{ cursor: 'default', display: 'flex', gap: '10px', alignItems: 'flex-start' }}
+                              style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px 12px' }}
                             >
-                              <div 
-                                className="checkbox-custom" 
-                                style={{ marginTop: '3px', cursor: 'pointer' }}
-                                onClick={() => handleToggleProduct(prod.id)}
-                              >
-                                {isSelected && <Check size={12} className="text-white" />}
-                              </div>
-                              
-                              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                <div style={{ cursor: 'pointer' }} onClick={() => handleToggleProduct(prod.id)}>
+                              <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer', margin: 0, width: '100%' }}>
+                                <input 
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleToggleProduct(prod.id)}
+                                  style={{ position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px', overflow: 'hidden', clip: 'rect(0,0,0,0)', border: 0 }}
+                                />
+                                <div 
+                                  className="checkbox-custom" 
+                                  style={{ marginTop: '3px', flexShrink: 0 }}
+                                >
+                                  {isSelected && <Check size={12} className="text-white" />}
+                                </div>
+                                <div style={{ flex: 1 }}>
                                   <span className="block text-xs font-semibold">{prod.name}</span>
                                   <span className="block text-[10px] text-muted text-monospace">
                                     Cod: {prod.barcode} | Preço original: {formatCurrency(prod.price_sell)}
                                   </span>
                                 </div>
-                                
-                                {isSelected && (
-                                  <div 
-                                    style={{ 
-                                      display: 'flex', 
-                                      gap: '8px', 
-                                      alignItems: 'center', 
-                                      background: 'rgba(0, 0, 0, 0.25)', 
-                                      padding: '6px 8px', 
-                                      borderRadius: '4px',
-                                      border: '1px solid rgba(255, 255, 255, 0.05)',
-                                      marginTop: '4px' 
-                                    }}
-                                  >
-                                    <div style={{ flex: 1 }}>
-                                      <span style={{ fontSize: '8px', fontWeight: 'bold', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)', display: 'block', marginBottom: '2px' }}>Desconto individual</span>
-                                      <select 
-                                        value={currentSelection?.discount_type || 'default'}
-                                        onChange={(e) => {
-                                          const val = e.target.value;
-                                          setSelectedProducts(prev => prev.map(p => {
-                                            if (p.product_id === prod.id) {
-                                              return {
-                                                ...p,
-                                                discount_type: val === 'default' ? null : val as any,
-                                                discount_value: val === 'default' ? null : (p.discount_value || 0)
-                                              };
-                                            }
-                                            return p;
-                                          }));
-                                        }}
-                                        className="input-field"
-                                        style={{ fontSize: '11px', padding: '2px 4px', height: '24px', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
-                                      >
-                                        <option value="default">Herdar Padrão</option>
-                                        <option value="percentage">Percentual (%)</option>
-                                        <option value="fixed_price">Preço Fixo (R$)</option>
-                                        <option value="fixed_discount">Desconto Fixo (R$)</option>
-                                      </select>
-                                    </div>
-
-                                    {(currentSelection?.discount_type !== null && currentSelection?.discount_type !== undefined) && (
-                                      <div style={{ width: '80px' }}>
-                                        <span style={{ fontSize: '8px', fontWeight: 'bold', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)', display: 'block', marginBottom: '2px' }}>Valor</span>
-                                        <input 
-                                          type="number"
-                                          step="0.01"
-                                          value={currentSelection?.discount_value ?? ''}
-                                          onChange={(e) => {
-                                            const val = parseFloat(e.target.value);
-                                            setSelectedProducts(prev => prev.map(p => {
-                                              if (p.product_id === prod.id) {
-                                                return { ...p, discount_value: isNaN(val) ? null : val };
-                                              }
-                                              return p;
-                                            }));
-                                          }}
-                                          placeholder="0.00"
-                                          className="input-field text-right font-bold"
-                                          style={{ fontSize: '11px', padding: '2px 4px', height: '24px', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
-                                        />
-                                      </div>
-                                    )}
+                              </label>
+                              
+                              {isSelected && (
+                                <div 
+                                  style={{ 
+                                    display: 'flex', 
+                                    gap: '8px', 
+                                    alignItems: 'center', 
+                                    background: 'rgba(0, 0, 0, 0.25)', 
+                                    padding: '6px 8px', 
+                                    borderRadius: '4px',
+                                    border: '1px solid rgba(255, 255, 255, 0.05)',
+                                    marginTop: '4px',
+                                    marginLeft: '28px'
+                                  }}
+                                >
+                                  <div style={{ flex: 1 }}>
+                                    <span style={{ fontSize: '8px', fontWeight: 'bold', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)', display: 'block', marginBottom: '2px' }}>Desconto individual</span>
+                                    <select 
+                                      value={currentSelection?.discount_type || 'default'}
+                                      onChange={(e) => handleUpdateProductDiscountType(prod.id, e.target.value)}
+                                      className="input-field"
+                                      style={{ fontSize: '11px', padding: '2px 4px', height: '24px', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+                                    >
+                                      <option value="default">Herdar Padrão</option>
+                                      <option value="percentage">Percentual (%)</option>
+                                      <option value="fixed_price">Preço Fixo (R$)</option>
+                                      <option value="fixed_discount">Desconto Fixo (R$)</option>
+                                    </select>
                                   </div>
-                                )}
-                              </div>
+
+                                  {(currentSelection?.discount_type !== null && currentSelection?.discount_type !== undefined) && (
+                                    <div style={{ width: '80px' }}>
+                                      <span style={{ fontSize: '8px', fontWeight: 'bold', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)', display: 'block', marginBottom: '2px' }}>Valor</span>
+                                      <input 
+                                        type="number"
+                                        step="0.01"
+                                        value={currentSelection?.discount_value ?? ''}
+                                        onChange={(e) => {
+                                          const val = Number.parseFloat(e.target.value);
+                                          handleUpdateProductDiscountValue(prod.id, Number.isNaN(val) ? null : val);
+                                        }}
+                                        placeholder="0.00"
+                                        className="input-field text-right font-bold"
+                                        style={{ fontSize: '11px', padding: '2px 4px', height: '24px', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           );
                         })

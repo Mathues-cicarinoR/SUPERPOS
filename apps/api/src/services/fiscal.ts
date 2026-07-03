@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import { getDb } from '../database/db.js';
 
 // Interface representing the fiscal invoice details
@@ -67,7 +67,7 @@ export class FiscalService {
   static async isSimulatorMode(cnpj: string): Promise<boolean> {
     const db = await getDb();
     const settings = await db.get("SELECT certificate_pfx FROM fiscal_settings WHERE cnpj = ?", [cnpj]);
-    return !settings || !settings.certificate_pfx;
+    return !settings?.certificate_pfx;
   }
 
   /**
@@ -95,7 +95,7 @@ export class FiscalService {
     let sum = 0;
     let weight = 2;
     for (let i = keyWithoutDV.length - 1; i >= 0; i--) {
-      sum += parseInt(keyWithoutDV[i]) * weight;
+      sum += Number.parseInt(keyWithoutDV[i], 10) * weight;
       weight = weight === 9 ? 2 : weight + 1;
     }
     const remainder = sum % 11;
@@ -109,7 +109,6 @@ export class FiscalService {
    * Acts as the "Distribuição DF-e" service.
    */
   static async syncReceivedInvoices(cnpj: string): Promise<FiscalInvoice[]> {
-    const cleanCnpj = cnpj.replace(/\D/g, '');
     const db = await getDb();
 
     const isSim = await this.isSimulatorMode(cnpj);
@@ -371,9 +370,9 @@ export class FiscalService {
       nfcTotalAmount = fiscalItems.reduce((sum: number, item: any) => sum + item.price_total, 0);
       if (saleData.total_amount > 0) {
         const ratio = saleData.discount / saleData.total_amount;
-        nfcDiscount = parseFloat((nfcTotalAmount * ratio).toFixed(2));
+        nfcDiscount = Number.parseFloat((nfcTotalAmount * ratio).toFixed(2));
       }
-      nfcFinalAmount = parseFloat((nfcTotalAmount - nfcDiscount).toFixed(2));
+      nfcFinalAmount = Number.parseFloat((nfcTotalAmount - nfcDiscount).toFixed(2));
     } else {
       nfcTotalAmount = saleData.total_amount;
       nfcDiscount = saleData.discount || 0;
@@ -405,9 +404,9 @@ export class FiscalService {
       const pisCst = item.cst_pis || settings.default_cst_pis || '49';
       const cofinsCst = item.cst_cofins || settings.default_cst_cofins || '49';
       
-      const pIcms = item.aliquot_icms !== null && item.aliquot_icms !== undefined ? parseFloat(item.aliquot_icms) : parseFloat(settings.default_aliquot_icms || '18.0');
-      const pPis = item.aliquot_pis !== null && item.aliquot_pis !== undefined ? parseFloat(item.aliquot_pis) : parseFloat(settings.default_aliquot_pis || '0.0');
-      const pCofins = item.aliquot_cofins !== null && item.aliquot_cofins !== undefined ? parseFloat(item.aliquot_cofins) : parseFloat(settings.default_aliquot_cofins || '0.0');
+      const pIcms = item.aliquot_icms !== null && item.aliquot_icms !== undefined ? Number.parseFloat(item.aliquot_icms) : Number.parseFloat(settings.default_aliquot_icms || '18.0');
+      const pPis = item.aliquot_pis !== null && item.aliquot_pis !== undefined ? Number.parseFloat(item.aliquot_pis) : Number.parseFloat(settings.default_aliquot_pis || '0.0');
+      const pCofins = item.aliquot_cofins !== null && item.aliquot_cofins !== undefined ? Number.parseFloat(item.aliquot_cofins) : Number.parseFloat(settings.default_aliquot_cofins || '0.0');
 
       let icmsXml = '';
       if (['102', '103', '300', '400'].includes(csosnCode)) {
@@ -486,7 +485,7 @@ export class FiscalService {
         <natOp>Venda Consumidor</natOp>
         <mod>65</mod>
         <serie>1</serie>
-        <nNF>${parseInt(number)}</nNF>
+        <nNF>${Number.parseInt(number, 10)}</nNF>
         <dhEmi>${dateStr}</dhEmi>
         <tpNF>1</tpNF>
         <idDest>1</idDest>

@@ -16,17 +16,20 @@ import {
   Square 
 } from 'lucide-react';
 
+// Interface que define o formato de dados de um usuário vindo do backend
 interface UserItem {
   id: number;
   username: string;
   role: string;
 }
 
+// Definição das propriedades do componente Users
 interface UsersProps {
-  currentUser: { username: string; role: string };
-  activeTab?: 'users' | 'roles';
+  currentUser: { username: string; role: string }; // Usuário atualmente logado no sistema
+  activeTab?: 'users' | 'roles'; // Aba ativa por padrão (usuários ou cargos)
 }
 
+// Mapeamento descritivo dos nomes técnicos dos módulos para exibição na UI
 const MODULE_LABELS: Record<string, string> = {
   pos: 'Acesso ao PDV (Ponto de Venda)',
   dashboard: 'Painel / Dashboard',
@@ -47,10 +50,21 @@ const MODULE_LABELS: Record<string, string> = {
   inventory: 'Balanço & Auditoria de Estoque'
 };
 
-export default function Users({ currentUser, activeTab: propActiveTab = 'users' }: UsersProps) {
+function getRoleBadgeClass(role: string): string {
+  switch (role) {
+    case 'admin':
+      return 'badge-primary';
+    case 'manager':
+      return 'badge-info';
+    default:
+      return 'badge-secondary';
+  }
+}
+
+export default function Users({ currentUser, activeTab: propActiveTab = 'users' }: Readonly<UsersProps>) {
   const [activeTab, setActiveTab] = useState<'users' | 'roles'>(propActiveTab);
 
-  // Users Tab State
+  // Estado da aba de usuários
   const [users, setUsers] = useState<UserItem[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [newUsername, setNewUsername] = useState('');
@@ -58,7 +72,7 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
   const [newRole, setNewRole] = useState('');
   const [userFormLoading, setUserFormLoading] = useState(false);
 
-  // Roles Tab State
+  // Estado da aba de cargos/perfis
   const [roles, setRoles] = useState<Role[]>([]);
   const [rolesLoading, setRolesLoading] = useState(true);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
@@ -81,7 +95,7 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
     }
   }, [activeTab]);
 
-  // Loaders
+  // Funções de carregamento de dados
   const loadUsers = async () => {
     setUsersLoading(true);
     try {
@@ -99,14 +113,14 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
     try {
       const res = await api.getRoles();
       setRoles(res);
-      // Auto-select first role if none selected on roles tab
+      // Seleciona automaticamente o primeiro cargo se nenhum estiver selecionado
       if (res.length > 0 && !selectedRole) {
         handleSelectRole(res[0]);
       } else if (selectedRole) {
         const updated = res.find(r => r.id === selectedRole.id);
         if (updated) handleSelectRole(updated);
       }
-      // Set default new user role to cashier or first available
+      // Define o cargo padrão do novo usuário para operador de caixa ou o primeiro disponível
       if (res.length > 0 && !newRole) {
         const defaultRole = res.find(r => r.name === 'cashier') || res[0];
         setNewRole(defaultRole.name);
@@ -123,8 +137,8 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
     setPermissionsState(role.permissions || []);
   };
 
-  // User Actions
-  const handleCreateUser = async (e: React.FormEvent) => {
+  // Ações de gerenciamento de usuários
+  const handleCreateUser = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (!newUsername.trim() || !newPassword || !newRole) {
       toast.warning('Preencha todos os campos do formulário.');
@@ -171,8 +185,8 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
     }
   };
 
-  // Role Actions
-  const handleCreateRole = async (e: React.FormEvent) => {
+  // Ações de gerenciamento de cargos
+  const handleCreateRole = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (!newRoleName.trim()) return;
 
@@ -213,15 +227,24 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
     }
   };
 
-  // Permissions Toggles
+  // Alternadores de permissões
   const handleTogglePermission = (moduleName: string, type: 'view' | 'write') => {
     setPermissionsState(prev => 
       prev.map(perm => {
         if (perm.module_name === moduleName) {
+          let can_view = perm.can_view;
+          let can_write = perm.can_write;
+
+          if (type === 'view') {
+            can_view = perm.can_view ? 0 : 1;
+          } else if (type === 'write') {
+            can_write = perm.can_write ? 0 : 1;
+          }
+
           return {
             ...perm,
-            can_view: type === 'view' ? (perm.can_view ? 0 : 1) : perm.can_view,
-            can_write: type === 'write' ? (perm.can_write ? 0 : 1) : perm.can_write
+            can_view,
+            can_write
           };
         }
         return perm;
@@ -236,7 +259,7 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
       await api.updateRolePermissions(selectedRole.id, permissionsState, currentUser.username);
       toast.success('Permissões do cargo salvas com sucesso!');
       
-      // Update local storage if current user logged in is affected by the changed role
+      // Atualiza o localStorage se o usuário logado atualmente for afetado pelo cargo modificado
       if (currentUser.role === selectedRole.name) {
         localStorage.setItem('superpos_user_permissions', JSON.stringify(permissionsState));
       }
@@ -251,10 +274,10 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
 
   return (
     <div className="animate-fade-in">
-      {/* USER LIST & CREATION TAB */}
+      {/* ABA DE CADASTRO E LISTAGEM DE USUÁRIOS */}
       {activeTab === 'users' && (
         <div className="grid-2col-1-2">
-          {/* Create User Form */}
+          {/* Formulário de Cadastro de Novo Usuário */}
           <div className="glass-card">
             <h3 className="panel-title mb-4 flex-center gap-2">
               <UserPlus size={20} className="text-primary" />
@@ -263,8 +286,10 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
             
             <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div className="form-group">
-                <label className="block text-xs text-muted mb-2 font-bold uppercase">Nome de Usuário (Login)</label>
+                <label htmlFor="new-username" className="block text-xs text-muted mb-2 font-bold uppercase">Nome de Usuário (Login)</label>
                 <input 
+
+id="new-username"
                   type="text"
                   placeholder="ex: pedro_caixa"
                   className="input-field"
@@ -275,10 +300,11 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
               </div>
 
               <div className="form-group">
-                <label className="block text-xs text-muted mb-2 font-bold uppercase">Senha</label>
+                <label htmlFor="new-password" className="block text-xs text-muted mb-2 font-bold uppercase">Senha</label>
                 <div className="search-input-wrapper">
                   <Key size={16} className="search-icon" />
                   <input 
+                    id="new-password"
                     type="password"
                     placeholder="••••••••"
                     className="input-field search-input"
@@ -290,10 +316,11 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
               </div>
 
               <div className="form-group">
-                <label className="block text-xs text-muted mb-2 font-bold uppercase">Perfil / Cargo</label>
+                <label htmlFor="new-role" className="block text-xs text-muted mb-2 font-bold uppercase">Perfil / Cargo</label>
                 <div className="search-input-wrapper">
                   <Shield size={16} className="search-icon" />
                   <select 
+                    id="new-role"
                     className="input-field search-input select-field"
                     value={newRole}
                     onChange={(e) => setNewRole(e.target.value)}
@@ -312,7 +339,7 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
             </form>
           </div>
 
-          {/* Users List */}
+          {/* Tabela de Listagem de Usuários */}
           <div className="glass-card flex flex-col" style={{ height: 'fit-content' }}>
             <h3 className="panel-title mb-4 flex-center gap-2">
               <User size={20} className="text-primary" />
@@ -336,7 +363,7 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
                       <tr key={u.id} className="table-row">
                         <td className="font-semibold">{u.username}</td>
                         <td>
-                          <span className={`badge ${u.role === 'admin' ? 'badge-primary' : u.role === 'manager' ? 'badge-info' : 'badge-secondary'}`}>
+                          <span className={`badge ${getRoleBadgeClass(u.role)}`}>
                             {u.role.toUpperCase()}
                           </span>
                         </td>
@@ -360,12 +387,12 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
         </div>
       )}
 
-      {/* ROLES & PERMISSIONS TAB */}
+      {/* ABA DE CARGOS E PERMISSÕES */}
       {activeTab === 'roles' && (
         <div className="grid-2col-1-15">
-          {/* Create and select roles */}
+          {/* Coluna da esquerda: Criar e Selecionar Cargos */}
           <div className="flex flex-col gap-4">
-            {/* Create Role Form */}
+            {/* Formulário de Cadastro de Novo Cargo */}
             <div className="glass-card">
               <h3 className="panel-title mb-4 flex-center gap-2">
                 <Plus size={20} className="text-primary" />
@@ -374,8 +401,9 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
 
               <form onSubmit={handleCreateRole} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div className="form-group">
-                  <label className="block text-xs text-muted mb-2 font-bold uppercase">Nome do Cargo</label>
+                  <label htmlFor="new-role-name" className="block text-xs text-muted mb-2 font-bold uppercase">Nome do Cargo</label>
                   <input
+                    id="new-role-name"
                     type="text"
                     placeholder="Ex: estoquista, fiscal"
                     className="input-field"
@@ -385,8 +413,9 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
                   />
                 </div>
                 <div className="form-group">
-                  <label className="block text-xs text-muted mb-2 font-bold uppercase">Descrição</label>
+                  <label htmlFor="new-role-desc" className="block text-xs text-muted mb-2 font-bold uppercase">Descrição</label>
                   <input
+                    id="new-role-desc"
                     type="text"
                     placeholder="Descrição sumária das funções..."
                     className="input-field"
@@ -401,7 +430,7 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
               </form>
             </div>
 
-            {/* List of Roles */}
+            {/* Lista de Cargos Cadastrados */}
             <div className="glass-card">
               <h3 className="panel-title mb-4 flex-center gap-2">
                 <Shield size={20} className="text-primary" />
@@ -416,24 +445,37 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
                     const isSelected = selectedRole?.id === r.id;
                     const isSystem = ['admin', 'manager', 'cashier'].includes(r.name);
                     return (
-                      <div 
-                        key={r.id}
-                        className={`flex-between p-3 rounded-lg border transition-all cursor-pointer ${
-                          isSelected 
-                            ? 'border-primary bg-primary-10' 
-                            : 'border-transparent bg-white-05 hover:bg-white-10'
-                        }`}
-                        onClick={() => handleSelectRole(r)}
-                      >
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                          <span className="font-bold block uppercase text-sm" style={{ color: 'var(--text-bright)' }}>{r.name}</span>
-                          <span className="text-xs text-muted block" style={{ textAlign: 'left' }}>{r.description || 'Sem descrição cadastrada'}</span>
-                        </div>
+                      <div key={r.id} className="relative group w-full" style={{ position: 'relative' }}>
+                        {/* Botão para selecionar o cargo */}
+                        <button
+                          type="button"
+                          className={`w-full text-left flex-between p-3 rounded-lg border transition-all ${
+                            isSelected 
+                              ? 'border-primary bg-primary-10' 
+                              : 'border-transparent bg-white-05 hover:bg-white-10'
+                          }`}
+                          onClick={() => handleSelectRole(r)}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                            <span className="font-bold block uppercase text-sm" style={{ color: 'var(--text-bright)' }}>{r.name}</span>
+                            <span className="text-xs text-muted block" style={{ textAlign: 'left' }}>{r.description || 'Sem descrição cadastrada'}</span>
+                          </div>
+                          
+                          {!isSystem && <div style={{ width: '24px', height: '24px' }} />}
+                        </button>
                         
+                        {/* Botão de Exclusão de Cargo (Elemento Irmão) */}
                         {!isSystem && (
                           <button
                             type="button"
                             className="btn-icon text-danger p-1"
+                            style={{
+                              position: 'absolute',
+                              right: '12px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              zIndex: 10
+                            }}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDeleteRole(r.id, r.name);
@@ -451,7 +493,7 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
             </div>
           </div>
 
-          {/* Module Permissions Configurator */}
+          {/* Coluna da direita: Painel de Configuração de Permissões por Módulo */}
           <div className= "glass-card">
             {selectedRole ? (
               <>
@@ -494,7 +536,7 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
                           >
                             {perm.can_view ? <CheckSquare size={18} /> : <Square size={18} />}
                           </button>
-                          Visualizar
+                          <span>Visualizar</span>
                         </label>
 
                         <label className="flex-center gap-2 text-xs font-semibold cursor-pointer select-none">
@@ -505,7 +547,7 @@ export default function Users({ currentUser, activeTab: propActiveTab = 'users' 
                           >
                             {perm.can_write ? <CheckSquare size={18} /> : <Square size={18} />}
                           </button>
-                          Modificar
+                          <span>Modificar</span>
                         </label>
                       </div>
                     </div>

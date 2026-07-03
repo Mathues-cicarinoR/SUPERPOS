@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../services/api';
 import { toast } from '../services/toast';
 import { confirmService } from '../services/confirm';
@@ -250,7 +251,7 @@ export default function BackupSettings() {
   return (
     <div className="backup-tab animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       {/* Overlay de carregamento para a restauração física do SQLite */}
-      {restoringBackup && (
+      {restoringBackup && createPortal(
         <div className="modal-backdrop" style={{ zIndex: 9999, backgroundColor: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(8px)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: '16px' }}>
           <div className="spin text-primary" style={{ animation: 'spin 2s linear infinite' }}>
             <RefreshCw size={48} />
@@ -261,14 +262,15 @@ export default function BackupSettings() {
             <br />
             Por favor, <strong>não feche ou recarregue esta janela</strong>.
           </p>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Cartões de métricas rápidas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
         <div className="glass-card p-4 flex-between" style={{ borderLeft: '4px solid var(--primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <span className="block text-xs text-muted mb-1 font-bold">TOTAL DE BACKUPS</span>
+            <span className="block  text-2xl text-xs text-muted mb-1 font-bold">TOTAL DE BACKUPS </span>
             <span className="text-2xl font-bold font-mono">{backups.length}</span>
           </div>
           <Database size={32} className="text-primary/20" style={{ opacity: 0.2, color: 'var(--primary)' }} />
@@ -276,7 +278,7 @@ export default function BackupSettings() {
 
         <div className="glass-card p-4 flex-between" style={{ borderLeft: '4px solid #10b981', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <span className="block text-xs text-muted mb-1 font-bold">ESPAÇO UTILIZADO</span>
+            <span className="block text-2xl text-xs text-muted mb-1 font-bold">ESPAÇO UTILIZADO </span>
             <span className="text-2xl font-bold font-mono">
               {(backups.reduce((sum, b) => sum + b.size, 0) / (1024 * 1024)).toFixed(2)} MB
             </span>
@@ -286,7 +288,7 @@ export default function BackupSettings() {
 
         <div className="glass-card p-4 flex-between" style={{ borderLeft: '4px solid #f59e0b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <span className="block text-xs text-muted mb-1 font-bold">ÚLTIMO PONTO AUTOMÁTICO</span>
+            <span className="block text-xs text-muted mb-1 font-bold">ÚLTIMO PONTO AUTOMÁTICO </span>
             <span className="text-sm font-bold block mt-1" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {lastAutomaticBackup 
                 ? new Date(lastAutomaticBackup.created_at).toLocaleString('pt-BR')

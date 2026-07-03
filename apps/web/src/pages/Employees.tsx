@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api, type Employee } from '../services/api';
 import { toast } from '../services/toast';
 import { confirmService } from '../services/confirm';
@@ -405,7 +406,7 @@ export default function Employees() {
     </div>
 
       {/* CRUD Edit/Add Modal */}
-      {isModalOpen && (
+      {isModalOpen && createPortal(
         <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="modal-content glass-card animate-scale-in" style={{ maxWidth: '750px', width: '95%', padding: '24px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', top: 'auto', left: 'auto', transform: 'none' }}>
             <div className="flex-between mb-4 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -630,11 +631,12 @@ export default function Employees() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Details Modal */}
-      {isDetailsModalOpen && selectedEmployee && (
+      {isDetailsModalOpen && selectedEmployee && createPortal(
         <div className="modal-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="modal-content glass-card animate-scale-in" style={{ maxWidth: '750px', width: '95%', padding: '24px', maxHeight: '90vh', overflowY: 'auto', position: 'relative', top: 'auto', left: 'auto', transform: 'none' }}>
             <div className="flex-between mb-4 pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -836,7 +838,8 @@ export default function Employees() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

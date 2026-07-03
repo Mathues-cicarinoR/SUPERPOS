@@ -6,7 +6,7 @@ interface PortalProps {
   onLogout: () => void;
 }
 
-export default function Portal({ currentUser, onLogout }: PortalProps) {
+export default function Portal({ currentUser, onLogout }: Readonly<PortalProps>) {
   const navigate = useNavigate();
 
   return (
@@ -22,13 +22,17 @@ export default function Portal({ currentUser, onLogout }: PortalProps) {
 
         <div className="grid-2col-equal" style={{ gap: '20px' }}>
           {/* Card 1: Frente de Caixa */}
-          <div
+          <button
+            type="button"
             onClick={() => navigate('/pos')}
-            className="glass-card cursor-pointer hover-scale p-5 text-center flex-column justify-center gap-3 transition-all duration-300"
+            className="glass-card cursor-pointer hover-scale p-5 text-center flex-column justify-center gap-3 transition-all duration-300 w-full"
             style={{
               border: '1px solid rgba(16, 185, 129, 0.2)',
               background: 'rgba(16, 185, 129, 0.03)',
-              borderRadius: '16px'
+              borderRadius: '16px',
+              fontFamily: 'inherit',
+              color: 'inherit',
+              textAlign: 'center'
             }}
           >
             <div className="auth-logo-icon mx-auto" style={{ background: 'linear-gradient(135deg, var(--success), #10b981)' }}>
@@ -39,16 +43,20 @@ export default function Portal({ currentUser, onLogout }: PortalProps) {
             <div className="flex-center text-success font-bold text-sm mt-3 gap-1" >
               Entrar no PDV <ArrowRight size={14} />
             </div>
-          </div>
+          </button>
 
           {/* Card 2: Painel Administrativo */}
-          <div
+          <button
+            type="button"
             onClick={() => navigate('/admin')}
-            className="glass-card cursor-pointer hover-scale p-5 text-center flex-column justify-center gap-3 transition-all duration-300"
+            className="glass-card cursor-pointer hover-scale p-5 text-center flex-column justify-center gap-3 transition-all duration-300 w-full"
             style={{
               border: '1px solid rgba(59, 130, 246, 0.2)',
               background: 'rgba(59, 130, 246, 0.03)',
-              borderRadius: '16px'
+              borderRadius: '16px',
+              fontFamily: 'inherit',
+              color: 'inherit',
+              textAlign: 'center'
             }}
           >
             <div className="auth-logo-icon mx-auto" style={{ background: 'linear-gradient(135deg, var(--primary), #3b82f6)' }}>
@@ -59,7 +67,7 @@ export default function Portal({ currentUser, onLogout }: PortalProps) {
             <div className="flex-center text-primary font-bold text-sm mt-3 gap-1">
               Gerenciar Loja <ArrowRight size={14} />
             </div>
-          </div>
+          </button>
         </div>
 
         <button

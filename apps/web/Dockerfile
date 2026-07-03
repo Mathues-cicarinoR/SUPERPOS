@@ -22,7 +22,7 @@ ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build --workspace=apps/web
 
 # Nginx production stage to serve static files
-FROM nginx:alpine
+FROM nginxinc/nginx-unprivileged:alpine
 
 # Copy built static files to Nginx public folder
 COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
@@ -30,6 +30,6 @@ COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
 # Copy custom Nginx configuration
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 
-EXPOSE 80
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

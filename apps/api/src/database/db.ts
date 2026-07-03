@@ -1,9 +1,52 @@
-import path from 'path';
-import { fileURLToPath } from 'url';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import fs from 'node:fs';
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function loadDotEnv() {
+  try {
+    const rootEnvPath = path.resolve(process.cwd(), '.env');
+    const apiEnvPath = path.resolve(process.cwd(), 'apps/api/.env');
+    let envPath = '';
+    if (fs.existsSync(rootEnvPath)) {
+      envPath = rootEnvPath;
+    } else if (fs.existsSync(apiEnvPath)) {
+      envPath = apiEnvPath;
+    } else {
+      const upEnvPath = path.resolve(process.cwd(), '../../.env');
+      if (fs.existsSync(upEnvPath)) {
+        envPath = upEnvPath;
+      }
+    }
+
+    if (envPath) {
+      const content = fs.readFileSync(envPath, 'utf8');
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith('#')) {
+          const firstEqual = trimmed.indexOf('=');
+          if (firstEqual > 0) {
+            const key = trimmed.slice(0, firstEqual).trim();
+            let val = trimmed.slice(firstEqual + 1).trim();
+            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+              val = val.slice(1, -1);
+            }
+            if (!process.env[key]) {
+              process.env[key] = val;
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Env Loader] Failed to load .env file:', err);
+  }
+}
 
 export interface Database {
   run(sql: string, params?: any[]): Promise<{ lastID?: number; changes?: number }>;
@@ -13,24 +56,12 @@ export interface Database {
   close(): Promise<void>;
 }
 
-export function translateSqlToPostgres(sql: string): string {
-  if (!sql) return '';
-  const trimmed = sql.trim();
-  
-  if (/^PRAGMA/i.test(trimmed)) {
-    return '';
-  }
-  if (/sqlite_sequence/i.test(trimmed)) {
-    return '';
-  }
-
+function replacePlaceholders(sql: string): string {
   let paramCount = 0;
   let inString = false;
   let escaped = false;
   let translatedSql = '';
-  
-  for (let i = 0; i < sql.length; i++) {
-    const char = sql[i];
+  for (const char of sql) {
     if (char === "'" && !escaped) {
       inString = !inString;
     }
@@ -47,18 +78,40 @@ export function translateSqlToPostgres(sql: string): string {
       translatedSql += char;
     }
   }
+  return translatedSql;
+}
+
+function resolveInsertOrIgnore(sql: string): string {
+  if (/INSERT OR IGNORE INTO product_barcodes/i.test(sql)) {
+    return sql.replace(/INSERT OR IGNORE INTO product_barcodes/i, 'INSERT INTO product_barcodes') + ' ON CONFLICT (barcode) DO NOTHING';
+  }
+  if (/INSERT OR IGNORE INTO role_permissions/i.test(sql)) {
+    return sql.replace(/INSERT OR IGNORE INTO role_permissions/i, 'INSERT INTO role_permissions') + ' ON CONFLICT (role_id, module_name) DO NOTHING';
+  }
+  if (/INSERT OR IGNORE INTO/i.test(sql)) {
+    return sql.replace(/INSERT OR IGNORE INTO/i, 'INSERT INTO');
+  }
+  return sql;
+}
+
+export function translateSqlToPostgres(sql: string): string {
+  if (!sql) return '';
+  const trimmed = sql.trim();
+  
+  if (/^PRAGMA/i.test(trimmed)) {
+    return '';
+  }
+  if (/sqlite_sequence/i.test(trimmed)) {
+    return '';
+  }
+
+  let translatedSql = replacePlaceholders(sql);
   
   translatedSql = translatedSql.replace(/INTEGER PRIMARY KEY AUTOINCREMENT/gi, 'SERIAL PRIMARY KEY');
   translatedSql = translatedSql.replace(/GROUP_CONCAT\(([^)]+)\)/gi, "string_agg($1, ',')");
   translatedSql = translatedSql.replace(/\s+LIKE\s+/gi, ' ILIKE ');
   
-  if (/INSERT OR IGNORE INTO product_barcodes/i.test(translatedSql)) {
-    translatedSql = translatedSql.replace(/INSERT OR IGNORE INTO product_barcodes/i, 'INSERT INTO product_barcodes') + ' ON CONFLICT (barcode) DO NOTHING';
-  } else if (/INSERT OR IGNORE INTO role_permissions/i.test(translatedSql)) {
-    translatedSql = translatedSql.replace(/INSERT OR IGNORE INTO role_permissions/i, 'INSERT INTO role_permissions') + ' ON CONFLICT (role_id, module_name) DO NOTHING';
-  } else if (/INSERT OR IGNORE INTO/i.test(translatedSql)) {
-    translatedSql = translatedSql.replace(/INSERT OR IGNORE INTO/i, 'INSERT INTO');
-  }
+  translatedSql = resolveInsertOrIgnore(translatedSql);
 
   translatedSql = translatedSql.replace(/date\('now',\s*'-7 days'\)/gi, "CURRENT_DATE - INTERVAL '7 days'");
   translatedSql = translatedSql.replace(/date\('now'\)/gi, "CURRENT_DATE");
@@ -67,15 +120,23 @@ export function translateSqlToPostgres(sql: string): string {
   translatedSql = translatedSql.replace(/datetime\('now',\s*'-1 days',\s*'\+8 hours'\)/gi, "NOW() - INTERVAL '1 days' + INTERVAL '8 hours'");
   translatedSql = translatedSql.replace(/datetime\('now',\s*'-1 days'\)/gi, "NOW() - INTERVAL '1 days'");
   translatedSql = translatedSql.replace(/datetime\('now',\s*'-2 hours'\)/gi, "NOW() - INTERVAL '2 hours'");
+  translatedSql = translatedSql.replace(/datetime\('now',\s*'(-?\d+)\s+(days|hours|minutes|seconds)'\)/gi, "NOW() + INTERVAL '$1 $2'");
   translatedSql = translatedSql.replace(/datetime\('now'\)/gi, "NOW()");
+  translatedSql = translatedSql.replace(/\bTIMESTAMP\b/gi, 'TIMESTAMPTZ');
+  translatedSql = translatedSql.replace(/datetime\(([^,]+),\s*'localtime'\)/gi, "($1)::timestamptz");
+  translatedSql = translatedSql.replace(/datetime\(([^)]+)\)/gi, "($1)::timestamptz");
 
   translatedSql = translatedSql.replace(/date\(([^)]+)\)/gi, "($1)::date");
+
+  // Translate SQLite strftime to PostgreSQL EXTRACT
+  translatedSql = translatedSql.replace(/strftime\('%w',\s*([^)]+)\)/gi, "EXTRACT(DOW FROM ($1)::timestamptz)");
+  translatedSql = translatedSql.replace(/strftime\('%d',\s*([^)]+)\)/gi, "EXTRACT(DAY FROM ($1)::timestamptz)");
 
   return translatedSql;
 }
 
 class PostgresDbWrapper implements Database {
-  private client: pg.Client;
+  private readonly client: pg.Client;
   constructor(client: pg.Client) {
     this.client = client;
   }
@@ -85,14 +146,28 @@ class PostgresDbWrapper implements Database {
     if (!pgSql) return {};
     
     let querySql = pgSql;
-    if (/^insert\s+/i.test(querySql.trim()) && !/returning/i.test(querySql)) {
-      querySql += ' RETURNING id';
+    const isInsert = /^insert\s+/i.test(querySql.trim());
+    const hasReturning = /returning/i.test(querySql);
+
+    if (isInsert && !hasReturning) {
+      try {
+        const res = await this.client.query(querySql + ' RETURNING id', params);
+        const lastID = res.rows[0]?.id;
+        const changes = res.rowCount || 0;
+        return { lastID, changes };
+      } catch (err: any) {
+        if (err.message.includes('column "id" does not exist') || err.message.includes('não existe a coluna "id"')) {
+          const res = await this.client.query(querySql, params);
+          const changes = res.rowCount || 0;
+          return { changes };
+        }
+        throw err;
+      }
     }
     
     const res = await this.client.query(querySql, params);
-    const lastID = res.rows[0]?.id;
     const changes = res.rowCount || 0;
-    return { lastID, changes };
+    return { changes };
   }
 
   async all<T = any>(sql: string, params: any[] = []): Promise<T[]> {
@@ -123,6 +198,7 @@ class PostgresDbWrapper implements Database {
 let dbInstance: Database | null = null;
 
 export async function getDb(): Promise<Database> {
+  loadDotEnv();
   if (dbInstance) return dbInstance;
 
   let client: pg.Client;
@@ -143,7 +219,7 @@ export async function getDb(): Promise<Database> {
       user: process.env.PGUSER,
       password: process.env.PGPASSWORD,
       database: process.env.PGDATABASE,
-      port: process.env.PGPORT ? parseInt(process.env.PGPORT) : 5432,
+      port: process.env.PGPORT ? Number.parseInt(process.env.PGPORT, 10) : 5432,
       ssl: host.includes('localhost') || host.includes('127.0.0.1')
         ? false
         : { rejectUnauthorized: false }
@@ -628,7 +704,7 @@ async function executarMigracoes(db: Database, execSafe: (sql: string) => Promis
 
 function obterAcessoModulo(roleName: string, moduleName: string): number {
   if (roleName === 'admin') return 1;
-  if (roleName === 'manager') return moduleName !== 'users' ? 1 : 0;
+  if (roleName === 'manager') return moduleName === 'users' ? 0 : 1;
   if (roleName === 'cashier') return moduleName === 'pos' ? 1 : 0;
   return 0;
 }
@@ -648,21 +724,31 @@ async function semearCargosEPermissoesIniciais(db: Database): Promise<void> {
 
     for (const mod of modules) {
       await db.run("INSERT INTO role_permissions (role_id, module_name, can_view, can_write) VALUES (?, ?, 1, 1)", [adminRoleResult.lastID, mod]);
-    }
 
-    for (const mod of modules) {
-      const hasAccess = mod !== 'users';
+      const managerAccess = mod === 'users' ? 0 : 1;
       await db.run("INSERT INTO role_permissions (role_id, module_name, can_view, can_write) VALUES (?, ?, ?, ?)", [
-        managerRoleResult.lastID, mod, hasAccess ? 1 : 0, hasAccess ? 1 : 0
+        managerRoleResult.lastID, mod, managerAccess, managerAccess
+      ]);
+
+      const cashierAccess = mod === 'pos' ? 1 : 0;
+      await db.run("INSERT INTO role_permissions (role_id, module_name, can_view, can_write) VALUES (?, ?, ?, ?)", [
+        cashierRoleResult.lastID, mod, cashierAccess, cashierAccess
       ]);
     }
+  }
+}
 
-    for (const mod of modules) {
-      const hasAccess = mod === 'pos';
-      await db.run("INSERT INTO role_permissions (role_id, module_name, can_view, can_write) VALUES (?, ?, ?, ?)", [
-        cashierRoleResult.lastID, mod, hasAccess ? 1 : 0, hasAccess ? 1 : 0
-      ]);
-    }
+async function migrarModuloParaRole(db: Database, role: { id: number; name: string }, mod: string): Promise<void> {
+  const exists = await db.get(
+    "SELECT id FROM role_permissions WHERE role_id = ? AND module_name = ?",
+    [role.id, mod]
+  );
+  if (!exists) {
+    const hasAccess = obterAcessoModulo(role.name, mod);
+    await db.run(
+      "INSERT INTO role_permissions (role_id, module_name, can_view, can_write) VALUES (?, ?, ?, ?)",
+      [role.id, mod, hasAccess, hasAccess]
+    );
   }
 }
 
@@ -677,17 +763,7 @@ async function migrarPermissoesFaltantes(db: Database): Promise<void> {
 
     for (const role of existingRoles) {
       for (const mod of allModules) {
-        const exists = await db.get(
-          "SELECT id FROM role_permissions WHERE role_id = ? AND module_name = ?",
-          [role.id, mod]
-        );
-        if (!exists) {
-          const hasAccess = obterAcessoModulo(role.name, mod);
-          await db.run(
-            "INSERT INTO role_permissions (role_id, module_name, can_view, can_write) VALUES (?, ?, ?, ?)",
-            [role.id, mod, hasAccess, hasAccess]
-          );
-        }
+        await migrarModuloParaRole(db, role, mod);
       }
     }
   } catch (error_: any) {
@@ -722,6 +798,166 @@ export async function initDb(): Promise<void> {
   await criarTabelas(db);
   await executarMigracoes(db, execSafe);
   await semearUsuariosEPermissoes(db);
+  await alterTablesToTimestamptz(db);
 
-  console.log("SQLite database initialized successfully.");
+  console.log("PostgreSQL database initialized successfully.");
+}
+
+const DB_FILE = process.env.DB_PATH
+  ? path.resolve(process.env.DB_PATH)
+  : path.resolve(process.cwd(), 'database.db');
+
+const TABLES_TO_SYNC = [
+  'categories',
+  'subcategories',
+  'products',
+  'product_barcodes',
+  'customers',
+  'sales',
+  'sale_items',
+  'users',
+  'roles',
+  'role_permissions',
+  'cash_sessions',
+  'terminals',
+  'suppliers',
+  'accounts_payable',
+  'system_logs',
+  'inventory_adjustments',
+  'inventories',
+  'inventory_items',
+  'fiscal_settings',
+  'received_invoices',
+  'emitted_invoices',
+  'employees',
+  'recurring_accounts',
+  'promotions',
+  'promotion_products',
+  'layout_zones',
+  'layout_zone_items'
+];
+
+async function alterTablesToTimestamptz(db: Database): Promise<void> {
+  const colsToAlter = [
+    { table: 'customers', col: 'created_at' },
+    { table: 'sales', col: 'created_at' },
+    { table: 'cash_sessions', col: 'opened_at' },
+    { table: 'cash_sessions', col: 'closed_at' },
+    { table: 'terminals', col: 'created_at' },
+    { table: 'suppliers', col: 'created_at' },
+    { table: 'accounts_payable', col: 'paid_at' },
+    { table: 'accounts_payable', col: 'created_at' },
+    { table: 'system_logs', col: 'timestamp' },
+    { table: 'inventory_adjustments', col: 'created_at' },
+    { table: 'inventories', col: 'created_at' },
+    { table: 'inventories', col: 'completed_at' },
+    { table: 'inventory_items', col: 'counted_at' },
+    { table: 'fiscal_settings', col: 'created_at' },
+    { table: 'received_invoices', col: 'created_at' },
+    { table: 'emitted_invoices', col: 'created_at' },
+    { table: 'employees', col: 'created_at' },
+    { table: 'recurring_accounts', col: 'created_at' },
+    { table: 'promotions', col: 'created_at' }
+  ];
+  for (const c of colsToAlter) {
+    try {
+      await db.exec(`ALTER TABLE "${c.table}" ALTER COLUMN "${c.col}" TYPE TIMESTAMPTZ`);
+    } catch (e: any) {
+      // Ignore if column is already timestamptz or table/column doesn't exist
+    }
+  }
+}
+
+export async function syncPgToSqlite(): Promise<void> {
+  const pgDb = await getDb();
+  
+  if (fs.existsSync(DB_FILE)) {
+    fs.unlinkSync(DB_FILE);
+  }
+  
+  const sqliteDb = await open({
+    filename: DB_FILE,
+    driver: sqlite3.Database
+  });
+  
+  try {
+    await criarTabelas(sqliteDb as any);
+    
+    for (const table of TABLES_TO_SYNC) {
+      const rows = await pgDb.all(`SELECT * FROM "${table}"`);
+      if (rows.length === 0) continue;
+      
+      const keys = Object.keys(rows[0]);
+      const columns = keys.map(k => `"${k}"`).join(', ');
+      const placeholders = keys.map(() => '?').join(', ');
+      const sql = `INSERT INTO "${table}" (${columns}) VALUES (${placeholders})`;
+      
+      for (const row of rows) {
+        const values = keys.map(k => {
+          const val = row[k];
+          if (val instanceof Date) {
+            return val.toISOString();
+          }
+          if (typeof val === 'boolean') {
+            return val ? 1 : 0;
+          }
+          return val;
+        });
+        await sqliteDb.run(sql, values);
+      }
+    }
+  } finally {
+    await sqliteDb.close();
+  }
+}
+
+export async function syncSqliteToPg(sqliteFilePath: string): Promise<void> {
+  const pgDb = await getDb();
+  
+  const sqliteDb = await open({
+    filename: sqliteFilePath,
+    driver: sqlite3.Database
+  });
+  
+  try {
+    await pgDb.exec('SET session_replication_role = "replica"');
+    
+    for (const table of TABLES_TO_SYNC) {
+      await pgDb.exec(`TRUNCATE TABLE "${table}" CASCADE`);
+    }
+    
+    for (const table of TABLES_TO_SYNC) {
+      const rows = await sqliteDb.all(`SELECT * FROM "${table}"`);
+      if (rows.length === 0) continue;
+      
+      const keys = Object.keys(rows[0]);
+      const columns = keys.map(k => `"${k}"`).join(', ');
+      const placeholders = keys.map(() => '?').join(', ');
+      const sql = `INSERT INTO "${table}" (${columns}) VALUES (${placeholders})`;
+      
+      for (const row of rows) {
+        const values = keys.map(k => {
+          const val = row[k];
+          if (typeof val === 'boolean') {
+            return val ? 1 : 0;
+          }
+          return val;
+        });
+        await pgDb.run(sql, values);
+      }
+    }
+    
+    for (const table of TABLES_TO_SYNC) {
+      try {
+        await pgDb.exec(`
+          SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE(MAX(id), 1)) FROM "${table}"
+        `);
+      } catch (err) {
+        // Ignore if table has no serial sequence
+      }
+    }
+  } finally {
+    await pgDb.exec('SET session_replication_role = "origin"');
+    await sqliteDb.close();
+  }
 }
