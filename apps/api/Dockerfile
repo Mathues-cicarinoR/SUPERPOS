@@ -1,5 +1,5 @@
 # apps/api/Dockerfile
-FROM node:20-alpine AS builder
+FROM node:26.4.0-alpine AS builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ COPY apps/api ./apps/api
 RUN npm run build --workspace=apps/api
 
 # Production stage
-FROM node:20-alpine AS runner
+FROM node:26.4.0-alpine AS runner
 
 WORKDIR /app
 
